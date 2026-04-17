@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  font-size: 16px;
+  --app-bg: #f3eee6;
+  --app-bg-secondary: #e6efe8;
+  --topbar-bg: rgba(255, 250, 244, 0.78);
+  --surface: rgba(255, 252, 248, 0.92);
+  --surface-strong: rgba(255, 251, 245, 0.96);
+  --surface-border: rgba(132, 117, 95, 0.16);
+  --text-primary: #2f2d2a;
+  --text-secondary: #6f6a63;
+  --chip-bg: rgba(255, 250, 244, 0.74);
+  --chip-active-bg: #2f554b;
+  --chip-active-text: #f7f4ed;
+  --chip-text: #4e5750;
+  --button-bg: #2f554b;
+  --button-text: #f7f4ed;
+  --button-secondary-bg: rgba(255, 252, 248, 0.78);
+  --button-secondary-text: #2f2d2a;
+  --overlay: rgba(45, 41, 36, 0.24);
+}
+
+:root[data-appearance="dark"] {
+  color-scheme: dark;
+  --app-bg: #12171d;
+  --app-bg-secondary: #1d2430;
+  --topbar-bg: rgba(18, 23, 29, 0.76);
+  --surface: rgba(34, 39, 51, 0.9);
+  --surface-strong: rgba(28, 33, 43, 0.94);
+  --surface-border: rgba(202, 214, 255, 0.1);
+  --text-primary: #f3efe9;
+  --text-secondary: #b4b3ba;
+  --chip-bg: rgba(255, 255, 255, 0.05);
+  --chip-active-bg: #e9dfc7;
+  --chip-active-text: #243039;
+  --chip-text: #d5d3d1;
+  --button-bg: #f5efe5;
+  --button-text: #1c232d;
+  --button-secondary-bg: rgba(255, 255, 255, 0.04);
+  --button-secondary-text: #f3efe9;
+  --overlay: rgba(7, 10, 15, 0.45);
+}
+
+html,
+body {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--app-bg-secondary) 48%, transparent), transparent 42%),
+    linear-gradient(180deg, var(--app-bg) 0%, color-mix(in srgb, var(--app-bg) 72%, var(--app-bg-secondary)) 100%);
+}
+
+body {
+  color: var(--text-primary);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+textarea {
+  resize: none;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+}
+
+@layer utilities {
+  .scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+}

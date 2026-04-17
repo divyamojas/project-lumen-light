@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Lumen app icon">
+  <rect width="192" height="192" rx="40" fill="#0F1117"/>
+  <circle cx="96" cy="78" r="34" fill="#DDD5ED"/>
+  <path d="M96 28c8 22 22 36 42 42-20 6-34 20-42 42-8-22-22-36-42-42 20-6 34-20 42-42Z" fill="#EDE4CC" opacity=".85"/>
+  <path d="M64 126h64c0 20-14 34-32 34s-32-14-32-34Z" fill="#D4E6D0"/>
+</svg>
