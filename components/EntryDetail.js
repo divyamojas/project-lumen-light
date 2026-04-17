@@ -7,6 +7,7 @@ export function EntryDetail({
   entry,
   isConfirmingDelete,
   onBack,
+  onEdit,
   onDelete,
   appearance = "dark",
   mode = "auto",
@@ -103,7 +104,19 @@ export function EntryDetail({
           </div>
         </article>
 
-        <div className="mt-8 flex justify-end">
+        <div className="mt-8 flex flex-wrap justify-end gap-3">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="rounded-full px-4 py-2 text-sm font-medium transition"
+            style={{
+              border: "1px solid var(--surface-border)",
+              backgroundColor: "var(--button-secondary-bg)",
+              color: "var(--button-secondary-text)",
+            }}
+          >
+            Edit Entry
+          </button>
           <button
             type="button"
             onClick={onDelete}

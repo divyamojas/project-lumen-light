@@ -2,10 +2,17 @@ import Link from "next/link";
 import { formatDate } from "../lib/utils";
 import { getThemePalette } from "../lib/themes";
 
-export function EntryCard({ entry, index = 0, appearance = "dark" }) {
+export function EntryCard({
+  entry,
+  index = 0,
+  appearance = "dark",
+  previewLength = 100,
+}) {
   const theme = getThemePalette(entry.theme, appearance);
   const preview =
-    entry.body.length > 100 ? `${entry.body.slice(0, 100).trimEnd()}...` : entry.body;
+    entry.body.length > previewLength
+      ? `${entry.body.slice(0, previewLength).trimEnd()}...`
+      : entry.body;
 
   return (
     <Link

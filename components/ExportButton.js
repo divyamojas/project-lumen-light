@@ -2,7 +2,7 @@
 
 import { getEntries } from "../lib/storage";
 
-export function ExportButton() {
+export function ExportButton({ onExport }) {
   const handleExport = () => {
     const entries = getEntries();
     const dateStamp = new Date().toISOString().slice(0, 10);
@@ -18,6 +18,7 @@ export function ExportButton() {
     anchor.click();
     document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
+    onExport?.(entries.length);
   };
 
   return (

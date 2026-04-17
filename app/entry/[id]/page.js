@@ -3,13 +3,23 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import EntryDetail from "../../../components/EntryDetail";
-import { deleteEntry, getEntryById, getUiMode, saveUiMode } from "../../../lib/storage";
+import EntryEditor from "../../../components/EntryEditor";
+import {
+  clearDraft,
+  deleteEntry,
+  getEntryById,
+  getUiMode,
+  saveUiMode,
+  updateEntry,
+} from "../../../lib/storage";
 import { resolveAppearance } from "../../../lib/utils";
 
 export default function EntryPage({ params }) {
   const router = useRouter();
   const [entry, setEntry] = useState(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [toast, setToast] = useState("");
   const [mode, setMode] = useState("auto");
   const [appearance, setAppearance] = useState("light");
   const [coordinates, setCoordinates] = useState({ latitude: null, longitude: null });
@@ -18,6 +28,20 @@ export default function EntryPage({ params }) {
     setEntry(getEntryById(params.id));
     setMode(getUiMode());
   }, [params.id]);
+
+  useEffect(() => {
+    if (!toast) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setToast("");
+    }, 2800);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [toast]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -99,8 +123,24 @@ export default function EntryPage({ params }) {
       return;
     }
 
+    clearDraft(`edit-${entry.id}`);
     deleteEntry(entry.id);
     router.push("/");
+  };
+
+  const handleUpdate = (values) => {
+    const updatedEntry = updateEntry(params.id, values);
+
+    if (!updatedEntry) {
+      setToast("This entry could not be updated.");
+      return null;
+    }
+
+    setEntry(updatedEntry);
+    setIsEditorOpen(false);
+    setToast("Entry updated.");
+    setIsConfirmingDelete(false);
+    return updatedEntry;
   };
 
   if (!entry) {
@@ -138,14 +178,41 @@ export default function EntryPage({ params }) {
   }
 
   return (
-    <EntryDetail
-      entry={entry}
-      isConfirmingDelete={isConfirmingDelete}
-      onBack={handleBack}
-      onDelete={handleDelete}
-      appearance={appearance}
-      mode={mode}
-      onModeChange={handleModeChange}
-    />
+    <>
+      <EntryDetail
+        entry={entry}
+        isConfirmingDelete={isConfirmingDelete}
+        onBack={handleBack}
+        onEdit={() => setIsEditorOpen(true)}
+        onDelete={handleDelete}
+        appearance={appearance}
+        mode={mode}
+        onModeChange={handleModeChange}
+      />
+
+      {toast ? (
+        <div
+          className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full px-4 py-2 text-sm shadow-lg"
+          style={{
+            backgroundColor: "var(--surface-strong)",
+            border: "1px solid var(--surface-border)",
+            color: "var(--text-primary)",
+          }}
+        >
+          {toast}
+        </div>
+      ) : null}
+
+      <EntryEditor
+        isOpen={isEditorOpen}
+        onClose={() => setIsEditorOpen(false)}
+        onSave={handleUpdate}
+        appearance={appearance}
+        initialValues={{ title: entry.title, body: entry.body }}
+        draftId={`edit-${entry.id}`}
+        heading="Edit Entry"
+        saveLabel="Save Changes"
+      />
+    </>
   );
 }

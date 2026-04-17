@@ -1,26 +1,47 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createEntry } from "../lib/storage";
+import { clearDraft, getDraft, saveDraft } from "../lib/storage";
 
-export function EntryEditor({ isOpen, onClose, onSave, appearance = "dark" }) {
+export function EntryEditor({
+  isOpen,
+  onClose,
+  onSave,
+  appearance = "dark",
+  initialValues,
+  draftId = "new-entry",
+  heading = "New Entry",
+  saveLabel = "Save",
+}) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [errors, setErrors] = useState({ title: "", body: "" });
+  const [draftStatus, setDraftStatus] = useState("");
   const textareaRef = useRef(null);
+  const saveTimeoutRef = useRef(null);
+  const loadedDraftRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
-      setTitle("");
-      setBody("");
       setErrors({ title: "", body: "" });
+      setDraftStatus("");
+      loadedDraftRef.current = false;
       return;
     }
+
+    const savedDraft = getDraft(draftId);
+    const nextTitle = savedDraft ? savedDraft.title : initialValues?.title || "";
+    const nextBody = savedDraft ? savedDraft.body : initialValues?.body || "";
+
+    setTitle(nextTitle);
+    setBody(nextBody);
+    setDraftStatus(savedDraft ? "Draft restored." : "");
+    loadedDraftRef.current = true;
 
     window.setTimeout(() => {
       textareaRef.current?.focus();
     }, 60);
-  }, [isOpen]);
+  }, [draftId, initialValues?.body, initialValues?.title, isOpen]);
 
   useEffect(() => {
     if (!textareaRef.current) {
@@ -30,6 +51,49 @@ export function EntryEditor({ isOpen, onClose, onSave, appearance = "dark" }) {
     textareaRef.current.style.height = "0px";
     textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
   }, [body, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !loadedDraftRef.current) {
+      return undefined;
+    }
+
+    window.clearTimeout(saveTimeoutRef.current);
+
+    saveTimeoutRef.current = window.setTimeout(() => {
+      const hasContent = title.trim() || body.trim();
+
+      if (!hasContent) {
+        clearDraft(draftId);
+        setDraftStatus("");
+        return;
+      }
+
+      saveDraft(draftId, { title, body });
+      setDraftStatus("Draft saved locally.");
+    }, 250);
+
+    return () => {
+      window.clearTimeout(saveTimeoutRef.current);
+    };
+  }, [body, draftId, isOpen, title]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   const handleSave = () => {
     const trimmedTitle = title.trim();
@@ -45,12 +109,16 @@ export function EntryEditor({ isOpen, onClose, onSave, appearance = "dark" }) {
       return;
     }
 
-    const entry = createEntry({
+    const entry = onSave({
       title: trimmedTitle.slice(0, 100),
       body: trimmedBody,
     });
 
-    onSave(entry);
+    clearDraft(draftId);
+    setDraftStatus("");
+    setTitle("");
+    setBody("");
+    return entry;
   };
 
   if (!isOpen) {
@@ -77,6 +145,16 @@ export function EntryEditor({ isOpen, onClose, onSave, appearance = "dark" }) {
         }}
       >
         <div className="mx-auto mb-5 h-1.5 w-14 rounded-full md:hidden" style={{ backgroundColor: "var(--surface-border)" }} />
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-[family-name:var(--font-playfair)] text-2xl" style={{ color: "var(--text-primary)" }}>
+              {heading}
+            </h2>
+            <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+              {draftStatus || "Writing is saved locally while you type."}
+            </p>
+          </div>
+        </div>
         <div className="space-y-4">
           <div>
             <input
@@ -132,7 +210,7 @@ export function EntryEditor({ isOpen, onClose, onSave, appearance = "dark" }) {
               color: "var(--button-text)",
             }}
           >
-            Save
+            {saveLabel}
           </button>
         </div>
       </div>

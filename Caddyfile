@@ -1,0 +1,5 @@
+https://localhost, https://{$LAN_HOST} {
+	tls internal
+	encode gzip zstd
+	reverse_proxy app:3000
+}
