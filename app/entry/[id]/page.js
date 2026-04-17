@@ -1,32 +1,54 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import EntryDetail from "../../../components/EntryDetail";
 import EntryEditor from "../../../components/EntryEditor";
 import {
   clearDraft,
+  createEntry,
   deleteEntry,
+  duplicateEntry,
+  getEntries,
   getEntryById,
   getUiMode,
   saveUiMode,
   updateEntry,
 } from "../../../lib/storage";
+import { findOnThisDayEntries, findRelatedEntries } from "../../../lib/journal.mjs";
 import { resolveAppearance } from "../../../lib/utils";
 
 export default function EntryPage({ params }) {
-  const router = useRouter();
   const [entry, setEntry] = useState(null);
+  const [allEntries, setAllEntries] = useState([]);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editorValues, setEditorValues] = useState(null);
+  const [editorMode, setEditorMode] = useState("edit");
   const [toast, setToast] = useState("");
   const [mode, setMode] = useState("auto");
   const [appearance, setAppearance] = useState("light");
   const [coordinates, setCoordinates] = useState({ latitude: null, longitude: null });
 
   useEffect(() => {
-    setEntry(getEntryById(params.id));
-    setMode(getUiMode());
+    let isMounted = true;
+
+    const load = async () => {
+      const [nextEntry, nextEntries] = await Promise.all([getEntryById(params.id), getEntries()]);
+
+      if (!isMounted) {
+        return;
+      }
+
+      setEntry(nextEntry);
+      setAllEntries(nextEntries);
+      setMode(getUiMode());
+    };
+
+    load();
+
+    return () => {
+      isMounted = false;
+    };
   }, [params.id]);
 
   useEffect(() => {
@@ -106,14 +128,14 @@ export default function EntryPage({ params }) {
 
   const handleBack = () => {
     if (window.history.length > 1) {
-      router.back();
+      window.history.back();
       return;
     }
 
-    router.push("/");
+    window.location.assign("/");
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!entry) {
       return;
     }
@@ -124,24 +146,77 @@ export default function EntryPage({ params }) {
     }
 
     clearDraft(`edit-${entry.id}`);
-    deleteEntry(entry.id);
-    router.push("/");
+    await deleteEntry(entry.id);
+    window.location.assign("/");
   };
 
-  const handleUpdate = (values) => {
-    const updatedEntry = updateEntry(params.id, values);
+  const handleUpdate = async (values) => {
+    const updatedEntry = await updateEntry(params.id, values);
 
     if (!updatedEntry) {
       setToast("This entry could not be updated.");
       return null;
     }
 
+    const nextEntries = await getEntries();
     setEntry(updatedEntry);
+    setAllEntries(nextEntries);
     setIsEditorOpen(false);
     setToast("Entry updated.");
     setIsConfirmingDelete(false);
     return updatedEntry;
   };
+
+  const handleDuplicate = async () => {
+    const duplicated = await duplicateEntry(params.id);
+
+    if (!duplicated) {
+      return;
+    }
+
+    setToast("Duplicate created.");
+    window.location.assign(`/entry/${duplicated.id}`);
+  };
+
+  const handleReflect = () => {
+    if (!entry) {
+      return;
+    }
+
+    setEditorValues({
+      title: `Follow-up: ${entry.title}`,
+      body: `Following up on "${entry.title}" from ${new Date(entry.createdAt).toLocaleDateString("en-US")}.\n\nWhat has changed?\n\nWhat still feels unresolved?\n`,
+      tags: entry.tags || [],
+      collection: entry.collection || "",
+      favorite: false,
+      pinned: false,
+      templateId: "follow-up",
+      promptId: "",
+      relatedEntryIds: [entry.id],
+    });
+    setEditorMode("reflect");
+    setIsEditorOpen(true);
+  };
+
+  const handleCreateReflection = async (values) => {
+    const created = await createEntry(values);
+
+    if (!created) {
+      return null;
+    }
+
+    setToast("Follow-up saved.");
+    window.location.assign(`/entry/${created.id}`);
+    return created;
+  };
+
+  const relatedEntries = useMemo(() => {
+    return entry ? findRelatedEntries(entry, allEntries) : [];
+  }, [allEntries, entry]);
+
+  const onThisDayEntries = useMemo(() => {
+    return entry ? findOnThisDayEntries(entry, allEntries) : [];
+  }, [allEntries, entry]);
 
   if (!entry) {
     return (
@@ -162,7 +237,7 @@ export default function EntryPage({ params }) {
           </p>
           <button
             type="button"
-            onClick={() => router.push("/")}
+            onClick={() => window.location.assign("/")}
             className="mt-4 rounded-full px-4 py-2 text-sm transition"
             style={{
               border: "1px solid var(--surface-border)",
@@ -183,11 +258,28 @@ export default function EntryPage({ params }) {
         entry={entry}
         isConfirmingDelete={isConfirmingDelete}
         onBack={handleBack}
-        onEdit={() => setIsEditorOpen(true)}
+        onEdit={() => {
+          setEditorValues({
+            title: entry.title,
+            body: entry.body,
+            tags: entry.tags,
+            collection: entry.collection,
+            favorite: entry.favorite,
+            pinned: entry.pinned,
+            templateId: entry.templateId,
+            promptId: entry.promptId,
+          });
+          setEditorMode("edit");
+          setIsEditorOpen(true);
+        }}
+        onReflect={handleReflect}
+        onDuplicate={handleDuplicate}
         onDelete={handleDelete}
         appearance={appearance}
         mode={mode}
         onModeChange={handleModeChange}
+        relatedEntries={relatedEntries}
+        onThisDayEntries={onThisDayEntries}
       />
 
       {toast ? (
@@ -205,13 +297,18 @@ export default function EntryPage({ params }) {
 
       <EntryEditor
         isOpen={isEditorOpen}
-        onClose={() => setIsEditorOpen(false)}
-        onSave={handleUpdate}
+        onClose={() => {
+          setIsEditorOpen(false);
+          setEditorValues(null);
+          setEditorMode("edit");
+        }}
+        onSave={editorMode === "reflect" ? handleCreateReflection : handleUpdate}
         appearance={appearance}
-        initialValues={{ title: entry.title, body: entry.body }}
-        draftId={`edit-${entry.id}`}
-        heading="Edit Entry"
-        saveLabel="Save Changes"
+        initialValues={editorValues}
+        draftId={editorMode === "reflect" ? `reflect-${entry.id}` : `edit-${entry.id}`}
+        heading={editorMode === "reflect" ? "Follow-up Reflection" : "Edit Entry"}
+        saveLabel={editorMode === "reflect" ? "Save Reflection" : "Save Changes"}
+        relatedEntries={entry ? [entry] : []}
       />
     </>
   );

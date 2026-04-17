@@ -1,10 +1,14 @@
 {
   "name": "Lumen",
   "short_name": "Lumen",
+  "id": "/",
+  "description": "A calm local-first journal for reflections, prompts, and private daily writing.",
   "theme_color": "#0F1117",
   "background_color": "#0F1117",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "start_url": "/",
+  "scope": "/",
   "icons": [
     {
       "src": "/icons/icon-192.svg",
@@ -17,6 +21,20 @@
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Entry",
+      "short_name": "New Entry",
+      "url": "/?compose=new",
+      "description": "Start writing a new journal entry"
+    },
+    {
+      "name": "Timeline",
+      "short_name": "Timeline",
+      "url": "/?view=timeline",
+      "description": "Browse entries by month"
     }
   ]
 }

@@ -7,12 +7,14 @@
   font-size: 16px;
   --app-bg: #f3eee6;
   --app-bg-secondary: #e6efe8;
+  --app-bg-tertiary: #f6f1ea;
   --topbar-bg: rgba(255, 250, 244, 0.78);
   --surface: rgba(255, 252, 248, 0.92);
   --surface-strong: rgba(255, 251, 245, 0.96);
   --surface-border: rgba(132, 117, 95, 0.16);
   --text-primary: #2f2d2a;
   --text-secondary: #6f6a63;
+  --text-muted: #908a83;
   --chip-bg: rgba(255, 250, 244, 0.74);
   --chip-active-bg: #2f554b;
   --chip-active-text: #f7f4ed;
@@ -21,19 +23,28 @@
   --button-text: #f7f4ed;
   --button-secondary-bg: rgba(255, 252, 248, 0.78);
   --button-secondary-text: #2f2d2a;
+  --button-danger-bg: #7f3a3a;
+  --button-danger-text: #fff3f3;
+  --badge-bg: rgba(47, 85, 75, 0.1);
+  --badge-text: #355146;
+  --offline-bg: #234033;
+  --offline-text: #f3f2ec;
   --overlay: rgba(45, 41, 36, 0.24);
+  --overlay-strong: rgba(23, 20, 17, 0.54);
 }
 
 :root[data-appearance="dark"] {
   color-scheme: dark;
   --app-bg: #12171d;
   --app-bg-secondary: #1d2430;
+  --app-bg-tertiary: #10151c;
   --topbar-bg: rgba(18, 23, 29, 0.76);
   --surface: rgba(34, 39, 51, 0.9);
   --surface-strong: rgba(28, 33, 43, 0.94);
   --surface-border: rgba(202, 214, 255, 0.1);
   --text-primary: #f3efe9;
   --text-secondary: #b4b3ba;
+  --text-muted: #8e93a1;
   --chip-bg: rgba(255, 255, 255, 0.05);
   --chip-active-bg: #e9dfc7;
   --chip-active-text: #243039;
@@ -42,7 +53,14 @@
   --button-text: #1c232d;
   --button-secondary-bg: rgba(255, 255, 255, 0.04);
   --button-secondary-text: #f3efe9;
+  --button-danger-bg: #8b4a4a;
+  --button-danger-text: #fff0f0;
+  --badge-bg: rgba(255, 255, 255, 0.06);
+  --badge-text: #f0eadc;
+  --offline-bg: #d7d0b7;
+  --offline-text: #1a222d;
   --overlay: rgba(7, 10, 15, 0.45);
+  --overlay-strong: rgba(2, 4, 8, 0.7);
 }
 
 html,
@@ -71,6 +89,23 @@ button {
   font: inherit;
 }
 
+button,
+input,
+textarea,
+select,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--button-bg) 62%, white);
+  outline-offset: 2px;
+}
+
 @layer utilities {
   .scrollbar-hidden {
     -ms-overflow-style: none;
@@ -79,5 +114,32 @@ button {
 
   .scrollbar-hidden::-webkit-scrollbar {
     display: none;
+  }
+
+  .glass-panel {
+    background-color: var(--surface);
+    border: 1px solid var(--surface-border);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+  }
+
+  .chip {
+    border: 1px solid var(--surface-border);
+    background-color: var(--chip-bg);
+    color: var(--chip-text);
+  }
+
+  .touch-target {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

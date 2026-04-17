@@ -1,116 +1,111 @@
 # Lumen
 
-Lumen is a production-minded Progressive Web App journal built with Next.js 14 App Router and Tailwind CSS. It keeps entries entirely on-device in `localStorage`, prioritizing a calm writing experience, installability on Android Chrome, and a clean foundation for later AI-assisted journal features.
+Lumen is a local-first Next.js 14 Progressive Web App journal designed for calm daily writing on desktop and mobile. Entries stay on-device, the app works as an installable PWA, and the current build now includes richer organization, backup, privacy, and reflection features.
+
+## Current Architecture
+
+- UI: Next.js 14 App Router with Tailwind CSS and plain JavaScript
+- Storage: IndexedDB for entries with migration from legacy `localStorage`
+- Preferences and drafts: still centralized in `lib/storage.js`
+- Networking: no backend, no auth, no analytics, no cloud sync
+- PWA: `next-pwa`, manifest, service worker in production builds, install prompt support
+
+## Current Features
+
+- Create, edit, duplicate, favorite, and pin entries
+- Organize entries with tags, collections, and related-entry links
+- Search across titles, body text, tags, and collections
+- Filter by favorites, pinned state, tags, collections, timeframe, and date range
+- Browse entries in feed, calendar, and timeline views
+- Draft autosave and restore for new, edited, and follow-up reflections
+- Markdown-lite editor actions and checklist-friendly writing
+- Writing prompts, calm templates, weekly reflection summaries, and “on this day” surfacing
+- Plain and encrypted JSON exports
+- Import preview with duplicate and invalid-entry counts before restore
+- Local privacy passcode with blur-on-background behavior
+- Offline status messaging and Android-friendly install support
 
 ## How To Run With Docker
 
-1. Install Docker Desktop or another Docker runtime that supports `docker compose`.
-2. Open a terminal in the project root: `/Users/myriad/containers/project-lumen`.
-3. Start the development environment with `docker compose up`.
-4. Wait for the container to finish installing dependencies and booting Next.js.
-5. Open `http://localhost:3000` in your browser.
-6. To open the app from another device on the same Wi-Fi or LAN, find your Mac's local IP address and open `http://YOUR_MAC_IP:3000` on that device.
-7. On macOS, if the browser on your phone cannot connect, check that Docker Desktop is running and that macOS Firewall is not blocking incoming connections to Docker.
-8. Stop the app with `Ctrl+C` in the terminal, then run `docker compose down` if you want to remove the container.
+1. Install Docker Desktop or another runtime that supports `docker compose`.
+2. Open a terminal in `/Users/myriad/containers/project-lumen`.
+3. Start the development stack:
+   `docker compose up`
+4. Open `http://localhost:3000`.
+5. For LAN testing, open `http://YOUR_MAC_IP:3000` on your phone.
 
 ## Local HTTPS For Android Install Testing
 
-Android Chrome usually will not show the PWA install prompt from plain `http://192.168.x.x:3000`. To test install behavior on your phone, run the local HTTPS proxy as well.
+Android Chrome usually needs a secure origin before install behavior becomes reliable.
 
-1. Find your Mac's LAN IP, for example with `ipconfig getifaddr en0`.
-2. Start the stack with your IP bound into the proxy config:
+1. Find your Mac LAN IP:
+   `ipconfig getifaddr en0`
+2. Start the stack with the IP bound into the proxy:
    `LAN_HOST=YOUR_MAC_IP docker compose up`
-3. On your Mac, visit `https://localhost` once and accept the local certificate warning if prompted.
-4. Export Caddy's local root certificate from the running proxy:
+3. Visit `https://localhost` once on your Mac and trust the local certificate if prompted.
+4. Export Caddy’s local root certificate:
    `docker compose exec proxy cat /data/caddy/pki/authorities/local/root.crt > lumen-local-root.crt`
-5. Move `lumen-local-root.crt` to your Android phone and install it as a trusted certificate.
+5. Install `lumen-local-root.crt` as a trusted certificate on Android.
 6. Open `https://YOUR_MAC_IP` on the phone.
 
 ### Notes
 
-- The proxy terminates HTTPS on ports `80` and `443` and forwards traffic to the Next.js app on `app:3000`.
-- The certificate is issued by Caddy's local internal CA, so your phone must trust that CA before Chrome treats the origin as secure.
-- Even with HTTPS, Chrome may choose to show install from the browser menu instead of an immediate popup.
-- If the install prompt still does not appear, first confirm the app is opening at `https://YOUR_MAC_IP` without certificate warnings.
+- Production-style PWA behavior should be validated with a production build, not `npm run dev`
+- A clean production check inside Docker is:
+  `docker compose run --rm -e NODE_ENV=production app npm run build`
+- In production mode, the service worker is emitted to `public/sw.js`
+- Chrome may still show installation from the browser menu instead of an immediate popup
+
+## Backups And Privacy
+
+- Standard export writes a readable JSON backup
+- Encrypted export wraps the same backup with an AES-GCM passphrase envelope
+- Restore runs through a preview step before entries are imported
+- Privacy settings can store a local passcode hint and enable lock-on-background behavior
+- All journal data remains device-local in the current phase
+
+## Data Model
+
+Each entry now includes the original journal fields plus richer organization metadata.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | `string` | Eight-character ID generated with `nanoid` |
+| `title` | `string` | Required, trimmed, max 100 characters |
+| `body` | `string` | Required freeform text |
+| `createdAt` | `string` | ISO timestamp, stable after creation |
+| `updatedAt` | `string` | ISO timestamp refreshed on edits |
+| `accentColor` | `object` | Random accent object selected once |
+| `theme` | `string` | Currently still defaults to `"neutral"` |
+| `tags` | `string[]` | Normalized tag slugs |
+| `collection` | `string` | Optional simple grouping label |
+| `favorite` | `boolean` | Highlighted entry flag |
+| `pinned` | `boolean` | Feed-priority entry flag |
+| `checklist` | `object[]` | Parsed checklist items derived from body text or saved state |
+| `relatedEntryIds` | `string[]` | Optional lightweight entry relationships |
+
+## Folder Structure
+
+- `app/` : routes, layout, and global styles
+- `components/` : UI surfaces including editor, cards, detail view, app shell, and import/export controls
+- `lib/storage.js` : all persistence, migration, export/import, and privacy helpers
+- `lib/journal.mjs` : filtering, summaries, prompts, templates, and view-model utilities
+- `lib/themes.js` : theme palette map
+- `lib/utils.js` : ID, date, accent, and appearance helpers
+- `public/` : manifest, icons, and generated service worker output in production
+- `tests/` : lightweight Node tests for journal logic
 
 ## Security Notes
 
 - `.next/` is excluded from version control — it is build output only
 - Never commit `*.crt`, `*.key`, or `*.pem` files
-- Local HTTPS certificates generated by Caddy are for testing only and must never be committed to the repository
+- Local HTTPS certificates generated by Caddy are for testing only and must never be committed
 - Never commit AWS credentials, `.env`, or `.env.local` files
-- Environment variable usage begins in Phase 2 (AWS S3 integration)
+- Environment variable usage begins in Phase 2 for AWS-oriented work
 
-## Local Network Access
-
-- The container is bound to `0.0.0.0:3000`, so the site is reachable from your Mac and other devices on the same network.
-- Use a browser on your phone with `http://YOUR_MAC_IP:3000`, for example `http://192.168.0.10:3000`.
-- `ping` does not use ports, so `ping 192.168.0.10:3000` is not a valid test. Use the browser URL above instead.
-- To find your Mac IP on macOS, run `ipconfig getifaddr en0` for Wi-Fi or `ipconfig getifaddr en1` on some setups.
-
-## Feature List
-
-### Current
-
-- Create journal entries with a title and freeform body text
-- Edit existing journal entries from the detail view
-- Save entries locally in browser `localStorage`
-- Autosave writing drafts locally while composing or editing
-- View saved entries in a responsive home feed
-- Open individual entries on a dedicated detail route
-- Delete entries with a confirmation click
-- Export all entries as a JSON file named with the current date
-- Import entries from a previous JSON export
-- Search entries by title and body text
-- Sort entries by newest, oldest, or title
-- Filter entries by timeframe
-- Theme-aware UI scaffold using `entry.theme`
-- Random accent color assignment at creation time
-- Staggered card entrance animation driven by Tailwind animation utilities
-- Manual `Auto` / `Light` / `Dark` appearance control with automatic resolution from sunrise, sunset, and device theme
-- Preview density preference for shorter or longer card excerpts
-- Softer light and dark visual palettes designed to feel calmer and less severe
-- Overflow-safe card and detail text rendering for long unbroken words
-- Keyboard shortcuts for quick note creation and search focus
-- Android-friendly install prompt wiring through the browser `beforeinstallprompt` event
-- Lightweight in-app feedback to confirm saves, imports, exports, installs, and updates
-- Installable PWA manifest and service worker setup via `next-pwa`
-- Mobile-first layout with a floating action button and bottom-sheet editor
-
-### Planned Phases
+## Planned Phases
 
 - Phase 2: Auto-push entries to AWS S3 on save
 - Phase 3: S3 event trigger to Lambda and Bedrock Knowledge Base sync
 - Phase 4: In-app natural language query over journal entries
 - Phase 5: Sentiment detection with AWS Comprehend to auto-set entry theme
-
-## Data Model
-
-Each journal entry is stored in browser `localStorage` under the key `lumen_entries` as part of a JSON array.
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `id` | `string` | Eight-character ID generated with `nanoid` |
-| `title` | `string` | User-provided title, required, max length 100 characters |
-| `body` | `string` | User-provided body text, required, no maximum length |
-| `createdAt` | `string` | ISO 8601 timestamp assigned on creation and never mutated |
-| `accentColor` | `object` | Random accent color object selected once on creation |
-| `theme` | `string` | Theme key, currently always set to `"neutral"` |
-
-## Folder Structure
-
-- `app/` : App Router pages, layout, and global styles
-- `components/` : Reusable UI building blocks for cards, editor, detail view, and export
-- `lib/` : Theme configuration, storage helpers, and utility functions for appearance and drafts
-- `public/` : PWA manifest and placeholder app icons
-- `Dockerfile` : Container image for local development
-- `docker-compose.yml` : Docker development orchestration with LAN-exposed HTTP and HTTPS port mapping plus named volumes
-- `Caddyfile` : Local HTTPS reverse proxy configuration for LAN PWA install testing
-- `.dockerignore` : Docker build exclusions
-- `package-lock.json` : npm lockfile used by Docker and production builds
-- `README.md` : Human-facing project guide
-- `CLAUDE.md` : Dense AI agent context for future coding sessions
-
-## Environment Variables
-
-None yet.

@@ -10,15 +10,34 @@ import {
 import EntryCard from "../components/EntryCard";
 import EntryEditor from "../components/EntryEditor";
 import ExportButton from "../components/ExportButton";
+import ImportPreviewModal from "../components/ImportPreviewModal";
 import {
   createEntry,
   getEntries,
+  getLastExportMeta,
   getPreviewMode,
+  getPrivacySettings,
   getUiMode,
   importEntries,
+  previewImportEntries,
   savePreviewMode,
+  savePrivacySettings,
   saveUiMode,
+  updateEntry,
 } from "../lib/storage";
+import {
+  buildCalendarMatrix,
+  buildReflectionSummary,
+  buildTimelineGroups,
+  filterEntries,
+  formatRangeLabel,
+  getAllCollections,
+  getAllTags,
+  getDayKey,
+  JOURNAL_PROMPTS,
+  JOURNAL_TEMPLATES,
+  sortEntries,
+} from "../lib/journal.mjs";
 import { resolveAppearance } from "../lib/utils";
 
 const isInteractiveElement = (element) => {
@@ -27,42 +46,14 @@ const isInteractiveElement = (element) => {
   }
 
   const tagName = element.tagName?.toLowerCase();
-  return (
-    element.isContentEditable ||
-    ["input", "textarea", "select", "button"].includes(tagName)
-  );
-};
-
-const matchesTimeframe = (entry, timeframe) => {
-  if (timeframe === "all") {
-    return true;
-  }
-
-  const createdAt = new Date(entry.createdAt);
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  if (timeframe === "today") {
-    return createdAt >= startOfToday;
-  }
-
-  if (timeframe === "week") {
-    const startOfWeek = new Date(startOfToday);
-    startOfWeek.setDate(startOfWeek.getDate() - 7);
-    return createdAt >= startOfWeek;
-  }
-
-  if (timeframe === "month") {
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    return createdAt >= startOfMonth;
-  }
-
-  return true;
+  return element.isContentEditable || ["input", "textarea", "select", "button"].includes(tagName);
 };
 
 export default function HomePage() {
   const [entries, setEntries] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editorValues, setEditorValues] = useState(null);
   const [mode, setMode] = useState("auto");
   const [appearance, setAppearance] = useState("light");
   const [previewMode, setPreviewMode] = useState("comfortable");
@@ -70,19 +61,59 @@ export default function HomePage() {
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [timeframe, setTimeframe] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [selectedCollections, setSelectedCollections] = useState([]);
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [onlyPinned, setOnlyPinned] = useState(false);
   const [toast, setToast] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isInstallCardDismissed, setIsInstallCardDismissed] = useState(false);
+  const [viewMode, setViewMode] = useState("feed");
+  const [activeMonth, setActiveMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState("");
+  const [privacyForm, setPrivacyForm] = useState(() => ({
+    passcode: "",
+    passcodeHint: getPrivacySettings().passcodeHint,
+    blurOnBackground: getPrivacySettings().blurOnBackground,
+  }));
+  const [lastExport, setLastExport] = useState(() => getLastExportMeta());
+  const [importPayload, setImportPayload] = useState(null);
+  const [importEntriesBuffer, setImportEntriesBuffer] = useState([]);
+  const [importPreview, setImportPreview] = useState(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importPassphrase, setImportPassphrase] = useState("");
+  const [requiresPassphrase, setRequiresPassphrase] = useState(false);
   const searchInputRef = useRef(null);
   const importInputRef = useRef(null);
   const deferredQuery = useDeferredValue(query);
 
   useEffect(() => {
-    setEntries(getEntries());
-    setMode(getUiMode());
-    setPreviewMode(getPreviewMode());
+    let isMounted = true;
+
+    const load = async () => {
+      setIsLoading(true);
+      const nextEntries = await getEntries();
+
+      if (!isMounted) {
+        return;
+      }
+
+      setEntries(nextEntries);
+      setMode(getUiMode());
+      setPreviewMode(getPreviewMode());
+      setLastExport(getLastExportMeta());
+      setIsLoading(false);
+    };
+
+    load();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -92,7 +123,7 @@ export default function HomePage() {
 
     const timeoutId = window.setTimeout(() => {
       setToast("");
-    }, 2800);
+    }, 3200);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -193,12 +224,11 @@ export default function HomePage() {
       if (event.key === "/" && !isInteractiveElement(document.activeElement)) {
         event.preventDefault();
         searchInputRef.current?.focus();
-        return;
       }
 
       if (event.key.toLowerCase() === "n" && !isInteractiveElement(document.activeElement)) {
+        setEditorValues(null);
         setIsEditorOpen(true);
-        return;
       }
 
       if (event.key === "Escape") {
@@ -213,65 +243,128 @@ export default function HomePage() {
     };
   }, []);
 
+  const allTags = useMemo(() => getAllTags(entries), [entries]);
+  const allCollections = useMemo(() => getAllCollections(entries), [entries]);
+
   const filteredEntries = useMemo(() => {
-    const normalizedQuery = deferredQuery.trim().toLowerCase();
-
-    const nextEntries = entries.filter((entry) => {
-      const matchesQuery =
-        !normalizedQuery ||
-        entry.title.toLowerCase().includes(normalizedQuery) ||
-        entry.body.toLowerCase().includes(normalizedQuery);
-
-      return matchesQuery && matchesTimeframe(entry, timeframe);
+    const nextEntries = filterEntries(entries, {
+      query: deferredQuery,
+      timeframe,
+      startDate,
+      endDate,
+      selectedTags,
+      selectedCollections,
+      onlyFavorites,
+      onlyPinned,
     });
 
-    if (sortBy === "oldest") {
-      return [...nextEntries].sort((left, right) => {
-        return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
-      });
-    }
+    const dateScopedEntries = selectedCalendarDay
+      ? nextEntries.filter((entry) => getDayKey(entry.createdAt) === selectedCalendarDay)
+      : nextEntries;
 
-    if (sortBy === "title") {
-      return [...nextEntries].sort((left, right) => {
-        return left.title.localeCompare(right.title);
-      });
-    }
+    return sortEntries(dateScopedEntries, sortBy);
+  }, [
+    deferredQuery,
+    endDate,
+    entries,
+    onlyFavorites,
+    onlyPinned,
+    selectedCalendarDay,
+    selectedCollections,
+    selectedTags,
+    sortBy,
+    startDate,
+    timeframe,
+  ]);
 
-    return [...nextEntries].sort((left, right) => {
-      return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
-    });
-  }, [deferredQuery, entries, sortBy, timeframe]);
+  const reflectionSummary = useMemo(() => buildReflectionSummary(entries), [entries]);
+  const calendar = useMemo(() => buildCalendarMatrix(filteredEntries, activeMonth), [activeMonth, filteredEntries]);
+  const timelineGroups = useMemo(() => buildTimelineGroups(filteredEntries), [filteredEntries]);
+  const previewLength = previewMode === "compact" ? 90 : 200;
 
-  const previewLength = previewMode === "compact" ? 100 : 180;
+  const refreshEntries = async () => {
+    setEntries(await getEntries());
+    setLastExport(getLastExportMeta());
+  };
 
   const handleModeChange = (nextMode) => {
     setMode(saveUiMode(nextMode));
     setToast(
       nextMode === "auto"
-        ? "Appearance will follow sunrise, sunset, or your device theme."
+        ? "Appearance now follows sunrise, sunset, or your device theme."
         : `Switched to ${nextMode} mode.`
     );
   };
 
   const handlePreviewModeChange = (nextMode) => {
     setPreviewMode(savePreviewMode(nextMode));
-    setToast(
-      nextMode === "compact"
-        ? "Preview cards now show shorter snippets."
-        : "Preview cards now show more of each entry."
-    );
+    setToast(nextMode === "compact" ? "Compact previews enabled." : "Comfortable previews enabled.");
   };
 
-  const handleEntryCreated = (values) => {
-    const entry = createEntry(values);
-    setEntries((currentEntries) => [entry, ...currentEntries]);
+  const handleEntryCreated = async (values) => {
+    const entry = await createEntry(values);
+    await refreshEntries();
     setIsEditorOpen(false);
+    setEditorValues(null);
     setToast("Entry saved.");
     return entry;
   };
 
-  const handleExport = (count) => {
-    setToast(count > 0 ? `Exported ${count} entries.` : "Exported an empty journal file.");
+  const toggleEntryField = async (id, key) => {
+    const currentEntry = entries.find((entry) => entry.id === id);
+
+    if (!currentEntry) {
+      return;
+    }
+
+    await updateEntry(id, { [key]: !currentEntry[key] });
+    await refreshEntries();
+    setToast(key === "favorite" ? "Favorites updated." : "Pinned entries updated.");
+  };
+
+  const handleOpenPrompt = (prompt) => {
+    setEditorValues({
+      title: "",
+      body: `${prompt}\n`,
+      templateId: "blank",
+      promptId: prompt,
+      tags: [],
+      collection: "",
+      favorite: false,
+      pinned: false,
+    });
+    setIsEditorOpen(true);
+  };
+
+  const handleOpenTemplate = (templateId) => {
+    const template = JOURNAL_TEMPLATES.find((item) => item.id === templateId);
+
+    if (!template) {
+      return;
+    }
+
+    setEditorValues({
+      title: template.title,
+      body: template.body,
+      templateId,
+      promptId: "",
+      tags: [],
+      collection: "",
+      favorite: false,
+      pinned: false,
+    });
+    setIsEditorOpen(true);
+  };
+
+  const handleExport = ({ count, encrypted, fileName }) => {
+    setLastExport(getLastExportMeta());
+    setToast(
+      encrypted
+        ? `Encrypted backup created: ${fileName}`
+        : count > 0
+          ? `Exported ${count} entries.`
+          : "Exported an empty journal file."
+    );
   };
 
   const handleImportClick = () => {
@@ -288,18 +381,52 @@ export default function HomePage() {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
-      const result = importEntries(parsed);
+      const result = await previewImportEntries(parsed);
 
-      setEntries(result.entries);
-      setToast(
-        result.importedCount > 0
-          ? `Imported ${result.importedCount} entries.`
-          : "No valid entries were found in that file."
-      );
+      setImportPayload(parsed);
+      setImportPreview(result.preview);
+      setImportEntriesBuffer(result.entries || []);
+      setRequiresPassphrase(result.requiresPassphrase);
+      setIsImportModalOpen(true);
     } catch (_error) {
-      setToast("Import failed. Please choose a valid Lumen JSON export.");
+      setToast("Import failed. Please choose a valid Lumen backup file.");
     } finally {
       event.target.value = "";
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    if (requiresPassphrase) {
+      try {
+        const result = await previewImportEntries(importPayload, importPassphrase);
+        setImportPreview(result.preview);
+        setImportEntriesBuffer(result.entries || []);
+        setRequiresPassphrase(false);
+      } catch (_error) {
+        setToast("That passphrase could not unlock the backup.");
+      }
+
+      return;
+    }
+
+    try {
+      const imported = await importEntries(importEntriesBuffer, {
+        duplicateMode: "replace-existing",
+      });
+
+      await refreshEntries();
+      setIsImportModalOpen(false);
+      setImportPayload(null);
+      setImportEntriesBuffer([]);
+      setImportPreview(null);
+      setImportPassphrase("");
+      setToast(
+        imported.importedCount > 0
+          ? `Imported ${imported.importedCount} entries. ${imported.duplicateCount} duplicates were updated.`
+          : "No valid entries were found in that backup."
+      );
+    } catch (_error) {
+      setToast("Import failed while restoring that backup.");
     }
   };
 
@@ -312,36 +439,42 @@ export default function HomePage() {
     await installPromptEvent.prompt();
     const choice = await installPromptEvent.userChoice;
 
-    if (choice?.outcome === "accepted") {
-      setToast("Install prompt accepted.");
-    } else {
-      setToast("Install prompt dismissed.");
-    }
-
+    setToast(choice?.outcome === "accepted" ? "Install prompt accepted." : "Install prompt dismissed.");
     setInstallPromptEvent(null);
   };
 
-  return (
-    <main className="relative flex min-h-screen flex-col overflow-hidden transition-colors duration-500">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-10 top-0 h-64 w-64 rounded-full bg-emerald-200/20 blur-3xl" />
-        <div className="absolute right-0 top-24 h-72 w-72 rounded-full bg-amber-100/30 blur-3xl" />
-      </div>
+  const handleSavePrivacy = async () => {
+    await savePrivacySettings(privacyForm);
+    setToast(privacyForm.passcode ? "Privacy settings saved. The app will lock in the background." : "Passcode removed.");
+    setPrivacyForm((currentValue) => ({ ...currentValue, passcode: "" }));
+  };
 
-      <div
-        className="sticky top-0 z-20 border-b px-5 pb-4 pt-5 backdrop-blur md:px-8"
+  const toggleChip = (value, items, setter) => {
+    setter(items.includes(value) ? items.filter((item) => item !== value) : [...items, value]);
+  };
+
+  const handleOpenEntry = (id) => {
+    window.location.assign(`/entry/${id}`);
+  };
+
+  return (
+    <main
+      className="min-h-screen pb-28 transition-colors duration-500"
+      style={{
+        background:
+          "radial-gradient(circle at top left, color-mix(in srgb, var(--app-bg-secondary) 48%, transparent), transparent 42%), linear-gradient(180deg, var(--app-bg) 0%, color-mix(in srgb, var(--app-bg) 72%, var(--app-bg-secondary)) 100%)",
+      }}
+    >
+      <header className="sticky top-0 z-30 border-b px-5 py-4 backdrop-blur md:px-8"
         style={{
-          borderColor: "var(--surface-border)",
           backgroundColor: "var(--topbar-bg)",
+          borderColor: "var(--surface-border)",
         }}
       >
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <p
-                className="mb-2 text-xs uppercase tracking-[0.28em]"
-                style={{ color: "var(--text-secondary)" }}
-              >
+              <p className="mb-2 text-xs uppercase tracking-[0.28em]" style={{ color: "var(--text-secondary)" }}>
                 Quiet journal
               </p>
               <h1
@@ -351,28 +484,27 @@ export default function HomePage() {
                 Lumen
               </h1>
               <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
-                Search with <kbd className="rounded px-1.5 py-0.5" style={{ backgroundColor: "var(--chip-bg)" }}>/</kbd> and
-                start a fresh note with <kbd className="rounded px-1.5 py-0.5" style={{ backgroundColor: "var(--chip-bg)" }}>N</kbd>.
+                Search with <kbd className="rounded px-1.5 py-0.5" style={{ backgroundColor: "var(--chip-bg)" }}>/</kbd> and open a fresh note with <kbd className="rounded px-1.5 py-0.5" style={{ backgroundColor: "var(--chip-bg)" }}>N</kbd>.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={handleImportClick}
-                className="rounded-full px-4 py-2 text-sm font-medium transition"
+                className="touch-target rounded-full px-4 py-2 text-sm font-medium transition"
                 style={{
                   border: "1px solid var(--surface-border)",
                   backgroundColor: "var(--button-secondary-bg)",
                   color: "var(--button-secondary-text)",
                 }}
               >
-                Import
+                Restore Backup
               </button>
               <ExportButton onExport={handleExport} />
               <button
                 type="button"
                 onClick={() => setIsSettingsOpen((currentValue) => !currentValue)}
-                className="rounded-full px-4 py-2 text-sm font-medium transition"
+                className="touch-target rounded-full px-4 py-2 text-sm font-medium transition"
                 style={{
                   border: "1px solid var(--surface-border)",
                   backgroundColor: "var(--button-secondary-bg)",
@@ -384,13 +516,13 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1.6fr)_repeat(2,minmax(0,0.7fr))]">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1.8fr)_repeat(2,minmax(0,0.8fr))]">
             <input
               ref={searchInputRef}
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search titles and entries..."
+              placeholder="Search titles, writing, tags, and collections..."
               className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
               style={{
                 border: "1px solid var(--surface-border)",
@@ -409,6 +541,7 @@ export default function HomePage() {
               }}
             >
               <option value="newest">Newest first</option>
+              <option value="updated">Recently updated</option>
               <option value="oldest">Oldest first</option>
               <option value="title">Title A-Z</option>
             </select>
@@ -429,16 +562,101 @@ export default function HomePage() {
             </select>
           </div>
 
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+              className="rounded-2xl px-4 py-3 text-sm outline-none"
+              style={{
+                border: "1px solid var(--surface-border)",
+                backgroundColor: "var(--surface)",
+                color: "var(--text-primary)",
+              }}
+            />
+            <input
+              type="date"
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+              className="rounded-2xl px-4 py-3 text-sm outline-none"
+              style={{
+                border: "1px solid var(--surface-border)",
+                backgroundColor: "var(--surface)",
+                color: "var(--text-primary)",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setOnlyFavorites((currentValue) => !currentValue)}
+              className="touch-target rounded-full px-4 py-2 text-sm font-medium"
+              style={{
+                backgroundColor: onlyFavorites ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                color: onlyFavorites ? "var(--button-text)" : "var(--button-secondary-text)",
+                border: onlyFavorites ? "none" : "1px solid var(--surface-border)",
+              }}
+            >
+              Favorites
+            </button>
+            <button
+              type="button"
+              onClick={() => setOnlyPinned((currentValue) => !currentValue)}
+              className="touch-target rounded-full px-4 py-2 text-sm font-medium"
+              style={{
+                backgroundColor: onlyPinned ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                color: onlyPinned ? "var(--button-text)" : "var(--button-secondary-text)",
+                border: onlyPinned ? "none" : "1px solid var(--surface-border)",
+              }}
+            >
+              Pinned
+            </button>
+          </div>
+
+          {allTags.length ? (
+            <div className="flex flex-wrap gap-2">
+              {allTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => toggleChip(tag, selectedTags, setSelectedTags)}
+                  className="touch-target rounded-full px-3 py-2 text-xs font-semibold"
+                  style={{
+                    backgroundColor: selectedTags.includes(tag) ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                    color: selectedTags.includes(tag) ? "var(--button-text)" : "var(--button-secondary-text)",
+                    border: selectedTags.includes(tag) ? "none" : "1px solid var(--surface-border)",
+                  }}
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {allCollections.length ? (
+            <div className="flex flex-wrap gap-2">
+              {allCollections.map((collection) => (
+                <button
+                  key={collection}
+                  type="button"
+                  onClick={() => toggleChip(collection, selectedCollections, setSelectedCollections)}
+                  className="touch-target rounded-full px-3 py-2 text-xs font-semibold"
+                  style={{
+                    backgroundColor: selectedCollections.includes(collection) ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                    color: selectedCollections.includes(collection) ? "var(--button-text)" : "var(--button-secondary-text)",
+                    border: selectedCollections.includes(collection) ? "none" : "1px solid var(--surface-border)",
+                  }}
+                >
+                  {collection}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           {installPromptEvent && !isInstalled && !isInstallCardDismissed ? (
             <div
               className="flex flex-col gap-3 rounded-[24px] px-4 py-4 md:flex-row md:items-center md:justify-between"
               style={{
                 backgroundColor: "var(--surface)",
                 border: "1px solid var(--surface-border)",
-                boxShadow:
-                  appearance === "light"
-                    ? "0 16px 32px rgba(77, 72, 61, 0.08)"
-                    : "0 16px 32px rgba(5, 8, 14, 0.24)",
               }}
             >
               <div>
@@ -446,14 +664,14 @@ export default function HomePage() {
                   Install Lumen on this device
                 </p>
                 <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  On Android Chrome, this opens the native install prompt so Lumen can live in your app drawer.
+                  Secure origins work best. On Android Chrome, install may appear in the browser menu even when the prompt is ready.
                 </p>
               </div>
               <div className="flex gap-3">
                 <button
                   type="button"
                   onClick={() => setIsInstallCardDismissed(true)}
-                  className="rounded-full px-4 py-2 text-sm font-medium transition"
+                  className="touch-target rounded-full px-4 py-2 text-sm font-medium transition"
                   style={{
                     border: "1px solid var(--surface-border)",
                     backgroundColor: "var(--button-secondary-bg)",
@@ -465,7 +683,7 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={handleInstall}
-                  className="rounded-full px-4 py-2 text-sm font-semibold transition hover:brightness-110"
+                  className="touch-target rounded-full px-4 py-2 text-sm font-semibold transition hover:brightness-110"
                   style={{
                     backgroundColor: "var(--button-bg)",
                     color: "var(--button-text)",
@@ -479,14 +697,10 @@ export default function HomePage() {
 
           {isSettingsOpen ? (
             <div
-              className="grid grid-cols-1 gap-4 rounded-[28px] px-5 py-5 md:grid-cols-3"
+              className="grid gap-4 rounded-[28px] px-5 py-5 md:grid-cols-3"
               style={{
                 backgroundColor: "var(--surface)",
                 border: "1px solid var(--surface-border)",
-                boxShadow:
-                  appearance === "light"
-                    ? "0 18px 40px rgba(77, 72, 61, 0.08)"
-                    : "0 18px 40px rgba(5, 8, 14, 0.24)",
               }}
             >
               <div>
@@ -499,10 +713,9 @@ export default function HomePage() {
                       key={option}
                       type="button"
                       onClick={() => handleModeChange(option)}
-                      className="rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition"
+                      className="touch-target rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition"
                       style={{
-                        backgroundColor:
-                          mode === option ? "var(--chip-active-bg)" : "transparent",
+                        backgroundColor: mode === option ? "var(--chip-active-bg)" : "transparent",
                         color: mode === option ? "var(--chip-active-text)" : "var(--chip-text)",
                       }}
                     >
@@ -510,10 +723,8 @@ export default function HomePage() {
                     </button>
                   ))}
                 </div>
-              </div>
 
-              <div>
-                <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                <p className="mt-5 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
                   Card previews
                 </p>
                 <div className="mt-3 inline-flex rounded-full p-1" style={{ backgroundColor: "var(--chip-bg)" }}>
@@ -522,14 +733,10 @@ export default function HomePage() {
                       key={option}
                       type="button"
                       onClick={() => handlePreviewModeChange(option)}
-                      className="rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition"
+                      className="touch-target rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition"
                       style={{
-                        backgroundColor:
-                          previewMode === option ? "var(--chip-active-bg)" : "transparent",
-                        color:
-                          previewMode === option
-                            ? "var(--chip-active-text)"
-                            : "var(--chip-text)",
+                        backgroundColor: previewMode === option ? "var(--chip-active-bg)" : "transparent",
+                        color: previewMode === option ? "var(--chip-active-text)" : "var(--chip-text)",
                       }}
                     >
                       {option}
@@ -540,110 +747,376 @@ export default function HomePage() {
 
               <div>
                 <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                  Helpful notes
+                  Privacy
+                </p>
+                <div className="mt-3 space-y-3">
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    value={privacyForm.passcode}
+                    onChange={(event) => setPrivacyForm((currentValue) => ({ ...currentValue, passcode: event.target.value }))}
+                    placeholder="Set or replace passcode"
+                    className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
+                    style={{
+                      border: "1px solid var(--surface-border)",
+                      backgroundColor: "var(--surface-strong)",
+                      color: "var(--text-primary)",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={privacyForm.passcodeHint}
+                    onChange={(event) => setPrivacyForm((currentValue) => ({ ...currentValue, passcodeHint: event.target.value.slice(0, 60) }))}
+                    placeholder="Optional hint"
+                    className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
+                    style={{
+                      border: "1px solid var(--surface-border)",
+                      backgroundColor: "var(--surface-strong)",
+                      color: "var(--text-primary)",
+                    }}
+                  />
+                  <label className="flex items-center gap-3 text-sm" style={{ color: "var(--text-secondary)" }}>
+                    <input
+                      type="checkbox"
+                      checked={privacyForm.blurOnBackground}
+                      onChange={(event) =>
+                        setPrivacyForm((currentValue) => ({
+                          ...currentValue,
+                          blurOnBackground: event.target.checked,
+                        }))
+                      }
+                    />
+                    Lock and blur the app when it goes to the background
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleSavePrivacy}
+                    className="touch-target rounded-full px-4 py-2 text-sm font-semibold"
+                    style={{
+                      backgroundColor: "var(--button-bg)",
+                      color: "var(--button-text)",
+                    }}
+                  >
+                    Save Privacy Settings
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Backup and AI Notes
                 </p>
                 <ul className="mt-3 space-y-2 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  <li>Drafts autosave while you type.</li>
-                  <li>Imports merge entries by ID and keep the newest local list.</li>
-                  <li>Android install appears when Chrome decides the app is installable.</li>
+                  <li>Backups can be exported plain or encrypted with a passphrase.</li>
+                  <li>Imports preview duplicates before they touch your journal.</li>
+                  <li>Mood detection and natural-language retrieval remain intentionally reserved for later phases.</li>
                 </ul>
+                {lastExport ? (
+                  <p className="mt-4 text-xs" style={{ color: "var(--text-muted)" }}>
+                    Last backup: {new Date(lastExport.timestamp).toLocaleString()} {lastExport.encrypted ? "(encrypted)" : ""}
+                  </p>
+                ) : null}
               </div>
             </div>
           ) : null}
         </div>
-      </div>
+      </header>
 
-      <section className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 px-5 pb-28 pt-8 md:px-8">
-        {entries.length === 0 ? (
-          <div className="flex w-full flex-1 flex-col items-center justify-center gap-4 text-center">
-            <div
-              className="rounded-full p-4"
-              style={{
-                border: "1px solid var(--surface-border)",
-                backgroundColor: "var(--surface)",
-                color: "var(--text-secondary)",
-              }}
-            >
-              <svg
-                aria-hidden="true"
-                className="h-8 w-8"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M16.862 4.487a2.25 2.25 0 1 1 3.182 3.182L8.61 19.103a4.5 4.5 0 0 1-1.897 1.13l-2.963.988.988-2.963a4.5 4.5 0 0 1 1.13-1.897L16.862 4.487Z"
-                />
-              </svg>
-            </div>
-            <p className="max-w-sm text-base" style={{ color: "var(--text-secondary)" }}>
-              Nothing here yet. Start writing, then search, sort, and export your journal as it grows.
-            </p>
-          </div>
-        ) : filteredEntries.length === 0 ? (
-          <div className="flex w-full flex-1 flex-col items-center justify-center gap-4 text-center">
-            <div
-              className="rounded-full p-4"
-              style={{
-                border: "1px solid var(--surface-border)",
-                backgroundColor: "var(--surface)",
-                color: "var(--text-secondary)",
-              }}
-            >
-              <svg
-                aria-hidden="true"
-                className="h-8 w-8"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="m21 21-4.35-4.35m0 0A7.5 7.5 0 1 0 6 6a7.5 7.5 0 0 0 10.65 10.65Z"
-                />
-              </svg>
-            </div>
-            <p className="max-w-sm text-base" style={{ color: "var(--text-secondary)" }}>
-              No entries match your search or filter right now.
-            </p>
-          </div>
-        ) : (
-          <div className="w-full">
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                Showing {filteredEntries.length} of {entries.length} entries
+      <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-6 md:px-8">
+        <div className="grid gap-4 md:grid-cols-4">
+          {[
+            ["Entries", reflectionSummary.totalEntries],
+            ["This Week", reflectionSummary.thisWeekCount],
+            ["Streak", `${reflectionSummary.streak} days`],
+            ["Favorites", reflectionSummary.favoriteCount],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-[28px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+              <p className="text-xs uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+                {label}
+              </p>
+              <p className="mt-3 text-3xl font-semibold" style={{ color: "var(--text-primary)" }}>
+                {value}
               </p>
             </div>
-            <div className="grid w-full grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {filteredEntries.map((entry, index) => (
-                <EntryCard
-                  key={entry.id}
-                  entry={entry}
-                  index={index}
-                  appearance={appearance}
-                  previewLength={previewLength}
-                />
-              ))}
+          ))}
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
+          <div className="rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Browse Your Journal
+                </p>
+                <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  {formatRangeLabel(startDate, endDate)} • {filteredEntries.length} matching entries
+                </p>
+              </div>
+              <div className="inline-flex rounded-full p-1" style={{ backgroundColor: "var(--chip-bg)" }}>
+                {["feed", "calendar", "timeline"].map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setViewMode(option)}
+                    className="touch-target rounded-full px-3 py-1.5 text-xs font-semibold capitalize"
+                    style={{
+                      backgroundColor: viewMode === option ? "var(--chip-active-bg)" : "transparent",
+                      color: viewMode === option ? "var(--chip-active-text)" : "var(--chip-text)",
+                    }}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {isLoading ? (
+              <div className="mt-8 rounded-[28px] p-8 text-center" style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}>
+                <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                  Loading your journal...
+                </p>
+              </div>
+            ) : null}
+
+            {!isLoading && entries.length === 0 ? (
+              <div className="mt-8 rounded-[28px] p-8 text-center" style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}>
+                <p className="text-base" style={{ color: "var(--text-secondary)" }}>
+                  Nothing here yet. Start writing, then organize your journal with tags, collections, favorites, and backups.
+                </p>
+              </div>
+            ) : null}
+
+            {!isLoading && entries.length > 0 && filteredEntries.length === 0 ? (
+              <div className="mt-8 rounded-[28px] p-8 text-center" style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}>
+                <p className="text-base" style={{ color: "var(--text-secondary)" }}>
+                  No entries match the current search, tag, collection, or date filters.
+                </p>
+              </div>
+            ) : null}
+
+            {!isLoading && filteredEntries.length > 0 && viewMode === "feed" ? (
+              <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {filteredEntries.map((entry, index) => (
+                  <EntryCard
+                    key={entry.id}
+                    entry={entry}
+                    index={index}
+                    appearance={appearance}
+                    previewLength={previewLength}
+                    onOpen={handleOpenEntry}
+                    onToggleFavorite={(id) => toggleEntryField(id, "favorite")}
+                    onTogglePinned={(id) => toggleEntryField(id, "pinned")}
+                  />
+                ))}
+              </div>
+            ) : null}
+
+            {!isLoading && filteredEntries.length > 0 && viewMode === "calendar" ? (
+              <div className="mt-6">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                      {calendar.monthLabel}
+                    </p>
+                    {selectedCalendarDay ? (
+                      <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+                        Day filter: {selectedCalendarDay}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="month"
+                      value={activeMonth}
+                      onChange={(event) => setActiveMonth(event.target.value)}
+                      className="rounded-2xl px-4 py-2 text-sm"
+                      style={{
+                        border: "1px solid var(--surface-border)",
+                        backgroundColor: "var(--surface-strong)",
+                        color: "var(--text-primary)",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCalendarDay("")}
+                      className="rounded-full px-4 py-2 text-sm"
+                      style={{
+                        border: "1px solid var(--surface-border)",
+                        backgroundColor: "var(--button-secondary-bg)",
+                        color: "var(--button-secondary-text)",
+                      }}
+                    >
+                      Clear Day
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-7 gap-2">
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+                    <div key={label} className="px-2 py-1 text-center text-xs uppercase tracking-[0.14em]" style={{ color: "var(--text-muted)" }}>
+                      {label}
+                    </div>
+                  ))}
+                  {calendar.cells.map((cell, index) =>
+                    cell ? (
+                      <button
+                        key={cell.key}
+                        type="button"
+                        onClick={() => setSelectedCalendarDay(cell.key === selectedCalendarDay ? "" : cell.key)}
+                        className="aspect-square rounded-2xl p-2 text-left transition"
+                        style={{
+                          border: "1px solid var(--surface-border)",
+                          backgroundColor: cell.key === selectedCalendarDay ? "var(--button-bg)" : "var(--surface-strong)",
+                          color: cell.key === selectedCalendarDay ? "var(--button-text)" : "var(--text-primary)",
+                        }}
+                      >
+                        <span className="text-xs font-semibold">{cell.day}</span>
+                        <span className="mt-3 block text-xs opacity-80">{cell.count || ""}</span>
+                      </button>
+                    ) : (
+                      <div key={`empty-${index}`} />
+                    )
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {!isLoading && filteredEntries.length > 0 && viewMode === "timeline" ? (
+              <div className="mt-6 space-y-6">
+                {timelineGroups.map((group) => (
+                  <section key={group.key}>
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+                      {group.label}
+                    </h3>
+                    <div className="mt-3 space-y-3">
+                      {group.entries.map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => handleOpenEntry(entry.id)}
+                          className="block w-full rounded-[24px] p-4 text-left transition hover:brightness-105"
+                          style={{
+                            backgroundColor: "var(--surface-strong)",
+                            border: "1px solid var(--surface-border)",
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
+                                {entry.title}
+                              </p>
+                              <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+                                {new Date(entry.createdAt).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })}
+                              </p>
+                            </div>
+                            <span className="rounded-full px-3 py-1 text-xs" style={{ backgroundColor: "var(--badge-bg)", color: "var(--badge-text)" }}>
+                              {(entry.tags || []).length} tags
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : null}
           </div>
-        )}
+
+          <div className="space-y-5">
+            <section className="rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                Quick Start
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {JOURNAL_TEMPLATES.slice(1).map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => handleOpenTemplate(template.id)}
+                    className="touch-target rounded-full px-4 py-2 text-sm"
+                    style={{
+                      border: "1px solid var(--surface-border)",
+                      backgroundColor: "var(--button-secondary-bg)",
+                      color: "var(--button-secondary-text)",
+                    }}
+                  >
+                    {template.label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 space-y-2">
+                {JOURNAL_PROMPTS.slice(0, 3).map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => handleOpenPrompt(prompt)}
+                    className="block w-full rounded-2xl p-3 text-left text-sm transition hover:brightness-105"
+                    style={{
+                      backgroundColor: "var(--surface-strong)",
+                      border: "1px solid var(--surface-border)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                Weekly Reflection
+              </p>
+              {reflectionSummary.topTags.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {reflectionSummary.topTags.map((item) => (
+                    <span key={item.tag} className="rounded-full px-3 py-1 text-xs" style={{ backgroundColor: "var(--badge-bg)", color: "var(--badge-text)" }}>
+                      #{item.tag} · {item.count}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  Top tags will appear here once you start tagging entries.
+                </p>
+              )}
+              <p className="mt-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+                This week you wrote {reflectionSummary.thisWeekCount} entries. Keep the streak gentle: {reflectionSummary.streak} consecutive days.
+              </p>
+            </section>
+
+            <section className="rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                Backup Status
+              </p>
+              <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
+                {lastExport
+                  ? `Last export: ${new Date(lastExport.timestamp).toLocaleString()}${lastExport.encrypted ? " (encrypted)" : ""}`
+                  : "No backup recorded yet."}
+              </p>
+              <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
+                Encrypted exports stay local and require the same passphrase for restore.
+              </p>
+            </section>
+          </div>
+        </div>
       </section>
 
       <button
         type="button"
-        onClick={() => setIsEditorOpen(true)}
-        className="fixed bottom-6 right-5 z-30 inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold shadow-glow transition hover:brightness-110 focus:outline-none md:bottom-8 md:right-8"
+        onClick={() => {
+          setEditorValues(null);
+          setIsEditorOpen(true);
+        }}
+        className="fixed bottom-6 right-5 z-30 rounded-full px-5 py-4 text-sm font-semibold shadow-[0_18px_40px_rgba(0,0,0,0.16)] transition hover:brightness-105 md:right-8"
         style={{
           backgroundColor: "var(--button-bg)",
           color: "var(--button-text)",
         }}
       >
-        <span className="text-lg leading-none">+</span>
         New Entry
       </button>
 
@@ -668,11 +1141,32 @@ export default function HomePage() {
         className="hidden"
       />
 
+      <ImportPreviewModal
+        isOpen={isImportModalOpen}
+        preview={importPreview}
+        requiresPassphrase={requiresPassphrase}
+        passphrase={importPassphrase}
+        onPassphraseChange={setImportPassphrase}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setImportPayload(null);
+          setImportEntriesBuffer([]);
+          setImportPreview(null);
+          setImportPassphrase("");
+          setRequiresPassphrase(false);
+        }}
+        onConfirm={handleConfirmImport}
+      />
+
       <EntryEditor
         isOpen={isEditorOpen}
-        onClose={() => setIsEditorOpen(false)}
+        onClose={() => {
+          setIsEditorOpen(false);
+          setEditorValues(null);
+        }}
         onSave={handleEntryCreated}
         appearance={appearance}
+        initialValues={editorValues}
         draftId="new-entry"
         heading="New Entry"
         saveLabel="Save Entry"

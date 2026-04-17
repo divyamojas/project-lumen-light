@@ -1,6 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Lumen app icon">
-  <rect width="512" height="512" rx="112" fill="#0F1117"/>
-  <circle cx="256" cy="202" r="92" fill="#DDD5ED"/>
-  <path d="M256 70c21 60 58 97 115 115-57 18-94 55-115 115-21-60-58-97-115-115 57-18 94-55 115-115Z" fill="#EDE4CC" opacity=".85"/>
-  <path d="M172 336h168c0 53-37 90-84 90s-84-37-84-90Z" fill="#D4E6D0"/>
+  <defs>
+    <linearGradient id="bg" x1="48" y1="28" x2="462" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#15202B"/>
+      <stop offset="1" stop-color="#31463F"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(256 188) rotate(90) scale(156)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF5D4"/>
+      <stop offset="1" stop-color="#FFF5D4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <circle cx="256" cy="188" r="156" fill="url(#glow)"/>
+  <path d="M256 58c25 72 71 118 138 138-67 20-113 66-138 138-25-72-71-118-138-138 67-20 113-66 138-138Z" fill="#F5DFC0"/>
+  <circle cx="256" cy="194" r="70" fill="#FFF4D9"/>
+  <path d="M150 322c30-20 65-30 106-30s76 10 106 30l-22 86H172l-22-86Z" fill="#D0E5C2"/>
+  <path d="M198 310h116c0 38-26 66-58 66s-58-28-58-66Z" fill="#284138" opacity=".55"/>
 </svg>
