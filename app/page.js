@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 import EntryCard from "../components/EntryCard";
 import EntryEditor from "../components/EntryEditor";
 import ExportButton from "../components/ExportButton";
@@ -14,6 +15,7 @@ import ImportPreviewModal from "../components/ImportPreviewModal";
 import {
   createEntry,
   getEntries,
+  getEntriesFresh,
   getLastExportMeta,
   getPreviewMode,
   getPrivacySettings,
@@ -49,7 +51,11 @@ const isInteractiveElement = (element) => {
   return element.isContentEditable || ["input", "textarea", "select", "button"].includes(tagName);
 };
 
+const REFRESH_DEBOUNCE_MS = 12000;
+
 export default function HomePage() {
+  const router = useRouter();
+  const showSeedTools = process.env.NODE_ENV !== "production";
   const [entries, setEntries] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -68,10 +74,10 @@ export default function HomePage() {
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [onlyPinned, setOnlyPinned] = useState(false);
   const [toast, setToast] = useState("");
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [activeTopPanel, setActiveTopPanel] = useState(null);
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
-  const [isInstallCardDismissed, setIsInstallCardDismissed] = useState(false);
+  const [isInstallPromptExpanded, setIsInstallPromptExpanded] = useState(false);
   const [viewMode, setViewMode] = useState("feed");
   const [activeMonth, setActiveMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedCalendarDay, setSelectedCalendarDay] = useState("");
@@ -87,8 +93,10 @@ export default function HomePage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importPassphrase, setImportPassphrase] = useState("");
   const [requiresPassphrase, setRequiresPassphrase] = useState(false);
+  const [isSeedingSamples, setIsSeedingSamples] = useState(false);
   const searchInputRef = useRef(null);
   const importInputRef = useRef(null);
+  const lastRefreshAtRef = useRef(0);
   const deferredQuery = useDeferredValue(query);
 
   useEffect(() => {
@@ -106,6 +114,7 @@ export default function HomePage() {
       setMode(getUiMode());
       setPreviewMode(getPreviewMode());
       setLastExport(getLastExportMeta());
+      lastRefreshAtRef.current = Date.now();
       setIsLoading(false);
     };
 
@@ -201,7 +210,7 @@ export default function HomePage() {
     const handleBeforeInstallPrompt = (event) => {
       event.preventDefault();
       setInstallPromptEvent(event);
-      setIsInstallCardDismissed(false);
+      setIsInstallPromptExpanded(false);
     };
 
     const handleAppInstalled = () => {
@@ -232,7 +241,8 @@ export default function HomePage() {
       }
 
       if (event.key === "Escape") {
-        setIsSettingsOpen(false);
+        setActiveTopPanel(null);
+        setIsInstallPromptExpanded(false);
       }
     };
 
@@ -283,9 +293,34 @@ export default function HomePage() {
   const previewLength = previewMode === "compact" ? 90 : 200;
 
   const refreshEntries = async () => {
-    setEntries(await getEntries());
+    lastRefreshAtRef.current = Date.now();
+    setEntries(await getEntriesFresh());
     setLastExport(getLastExportMeta());
   };
+
+  useEffect(() => {
+    const refreshIfStale = () => {
+      if (Date.now() - lastRefreshAtRef.current < REFRESH_DEBOUNCE_MS) {
+        return;
+      }
+
+      refreshEntries();
+    };
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshIfStale();
+      }
+    };
+
+    window.addEventListener("focus", refreshIfStale);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+
+    return () => {
+      window.removeEventListener("focus", refreshIfStale);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
+  }, []);
 
   const handleModeChange = (nextMode) => {
     setMode(saveUiMode(nextMode));
@@ -449,49 +484,463 @@ export default function HomePage() {
     setPrivacyForm((currentValue) => ({ ...currentValue, passcode: "" }));
   };
 
+  const handleSeedSamples = async () => {
+    setIsSeedingSamples(true);
+
+    try {
+      const response = await fetch("/api/dev/seed", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Seed failed");
+      }
+
+      const result = await response.json();
+      await refreshEntries();
+      setToast(
+        result.importedCount > 0
+          ? `Sample journal ready. ${result.importedCount} entries were loaded or refreshed.`
+          : "Sample journal is already up to date."
+      );
+    } catch (_error) {
+      setToast("Sample data could not be loaded.");
+    } finally {
+      setIsSeedingSamples(false);
+    }
+  };
+
+  const clearFilters = () => {
+    setQuery("");
+    setSortBy("newest");
+    setTimeframe("all");
+    setStartDate("");
+    setEndDate("");
+    setSelectedTags([]);
+    setSelectedCollections([]);
+    setOnlyFavorites(false);
+    setOnlyPinned(false);
+    setSelectedCalendarDay("");
+    setActiveMonth(new Date().toISOString().slice(0, 7));
+    setToast("Filters cleared.");
+  };
+
+  const toggleTopPanel = (panel) => {
+    setActiveTopPanel((currentValue) => (currentValue === panel ? null : panel));
+  };
+
   const toggleChip = (value, items, setter) => {
     setter(items.includes(value) ? items.filter((item) => item !== value) : [...items, value]);
   };
 
   const handleOpenEntry = (id) => {
-    window.location.assign(`/entry/${id}`);
+    router.push(`/entry/${id}`);
   };
+
+  const installPromptVisible = Boolean(installPromptEvent) && !isInstalled;
+  const activeFilterCount = [
+    query.trim() ? 1 : 0,
+    timeframe !== "all" ? 1 : 0,
+    startDate ? 1 : 0,
+    endDate ? 1 : 0,
+    onlyFavorites ? 1 : 0,
+    onlyPinned ? 1 : 0,
+    selectedCalendarDay ? 1 : 0,
+    selectedTags.length,
+    selectedCollections.length,
+  ].reduce((sum, value) => sum + value, 0);
+  const filterSummary = activeFilterCount
+    ? `${activeFilterCount} active ${activeFilterCount === 1 ? "filter" : "filters"}`
+    : "Everything is in view";
+  const utilityLabel = `${filteredEntries.length} matching ${filteredEntries.length === 1 ? "entry" : "entries"}`;
 
   return (
     <main
-      className="min-h-screen pb-28 transition-colors duration-500"
+      className="min-h-screen pb-28 pt-4 transition-colors duration-500 md:pt-6"
       style={{
         background:
           "radial-gradient(circle at top left, color-mix(in srgb, var(--app-bg-secondary) 48%, transparent), transparent 42%), linear-gradient(180deg, var(--app-bg) 0%, color-mix(in srgb, var(--app-bg) 72%, var(--app-bg-secondary)) 100%)",
       }}
     >
-      <header className="sticky top-0 z-30 border-b px-5 py-4 backdrop-blur md:px-8"
-        style={{
-          backgroundColor: "var(--topbar-bg)",
-          borderColor: "var(--surface-border)",
-        }}
-      >
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="mb-2 text-xs uppercase tracking-[0.28em]" style={{ color: "var(--text-secondary)" }}>
-                Quiet journal
-              </p>
-              <h1
-                className="font-[family-name:var(--font-playfair)] text-4xl md:text-5xl"
-                style={{ color: "var(--text-primary)" }}
-              >
-                Lumen
-              </h1>
-              <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
-                Search with <kbd className="rounded px-1.5 py-0.5" style={{ backgroundColor: "var(--chip-bg)" }}>/</kbd> and open a fresh note with <kbd className="rounded px-1.5 py-0.5" style={{ backgroundColor: "var(--chip-bg)" }}>N</kbd>.
-              </p>
+      <header className="pointer-events-none sticky top-4 z-40 px-5 md:px-8">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
+          <div
+            className="pointer-events-auto relative overflow-visible rounded-[30px] border px-3 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.12)] backdrop-blur-xl md:px-4"
+            style={{
+              backgroundColor: "color-mix(in srgb, var(--surface) 76%, transparent)",
+              borderColor: "color-mix(in srgb, var(--surface-border) 88%, white 12%)",
+            }}
+          >
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="flex items-center gap-3 lg:min-w-[11rem]">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl" style={{ backgroundColor: "color-mix(in srgb, var(--button-bg) 14%, transparent)" }}>
+                  <span className="font-[family-name:var(--font-playfair)] text-lg" style={{ color: "var(--text-primary)" }}>
+                    L
+                  </span>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
+                    Quiet journal
+                  </p>
+                  <p className="font-[family-name:var(--font-playfair)] text-2xl leading-none" style={{ color: "var(--text-primary)" }}>
+                    Lumen
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex-1">
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search your entries..."
+                  className="w-full rounded-[22px] px-4 py-3 text-sm outline-none transition"
+                  style={{
+                    border: "1px solid var(--surface-border)",
+                    backgroundColor: "color-mix(in srgb, var(--surface-strong) 88%, transparent)",
+                    color: "var(--text-primary)",
+                  }}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditorValues(null);
+                    setIsEditorOpen(true);
+                  }}
+                  className="touch-target rounded-full px-4 py-2 text-sm font-semibold"
+                  style={{
+                    backgroundColor: "var(--button-bg)",
+                    color: "var(--button-text)",
+                  }}
+                >
+                  New Entry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOnlyFavorites((currentValue) => !currentValue)}
+                  className="touch-target rounded-full px-3 py-2 text-sm font-medium"
+                  style={{
+                    backgroundColor: onlyFavorites ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                    color: onlyFavorites ? "var(--button-text)" : "var(--button-secondary-text)",
+                    border: onlyFavorites ? "none" : "1px solid var(--surface-border)",
+                  }}
+                >
+                  Favorites
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOnlyPinned((currentValue) => !currentValue)}
+                  className="touch-target rounded-full px-3 py-2 text-sm font-medium"
+                  style={{
+                    backgroundColor: onlyPinned ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                    color: onlyPinned ? "var(--button-text)" : "var(--button-secondary-text)",
+                    border: onlyPinned ? "none" : "1px solid var(--surface-border)",
+                  }}
+                >
+                  Pinned
+                </button>
+                {[
+                  ["filters", activeFilterCount ? `Filters (${activeFilterCount})` : "Filters"],
+                  ["library", "Library"],
+                  ["settings", "Settings"],
+                ].map(([panel, label]) => (
+                  <button
+                    key={panel}
+                    type="button"
+                    onClick={() => toggleTopPanel(panel)}
+                    aria-expanded={activeTopPanel === panel}
+                    className="touch-target rounded-full px-3 py-2 text-sm font-medium transition"
+                    style={{
+                      backgroundColor: activeTopPanel === panel ? "var(--chip-active-bg)" : "var(--chip-bg)",
+                      color: activeTopPanel === panel ? "var(--chip-active-text)" : "var(--chip-text)",
+                      border: activeTopPanel === panel ? "none" : "1px solid var(--surface-border)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 pr-14 md:pr-16">
+              <span className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ backgroundColor: "var(--chip-bg)", color: "var(--chip-text)" }}>
+                {utilityLabel}
+              </span>
+              <span className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ backgroundColor: "var(--chip-bg)", color: "var(--chip-text)" }}>
+                {filterSummary}
+              </span>
+              <span className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ backgroundColor: "var(--chip-bg)", color: "var(--chip-text)" }}>
+                Viewing {viewMode}
+              </span>
+              <span className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ backgroundColor: "var(--chip-bg)", color: "var(--chip-text)" }}>
+                Press <span className="font-mono">/</span> to search
+              </span>
+            </div>
+
+            {installPromptVisible ? (
+              <div className="pointer-events-auto absolute right-3 top-3 md:right-4 md:top-4">
+                <div
+                  className="group relative"
+                  onMouseEnter={() => setIsInstallPromptExpanded(true)}
+                  onMouseLeave={() => setIsInstallPromptExpanded(false)}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setIsInstallPromptExpanded((currentValue) => !currentValue)}
+                    className="flex h-11 w-11 items-center justify-center rounded-full border transition"
+                    style={{
+                      borderColor: "var(--surface-border)",
+                      backgroundColor: "color-mix(in srgb, var(--surface-strong) 86%, transparent)",
+                      color: "var(--text-primary)",
+                    }}
+                    aria-expanded={isInstallPromptExpanded}
+                    aria-label="Install app"
+                  >
+                    ↓
+                  </button>
+                  <div
+                    className={`absolute right-0 top-14 w-72 rounded-[24px] border p-4 shadow-[0_18px_40px_rgba(0,0,0,0.14)] transition ${isInstallPromptExpanded ? "visible translate-y-0 opacity-100" : "invisible translate-y-2 opacity-0 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"}`}
+                    style={{
+                      backgroundColor: "color-mix(in srgb, var(--surface) 94%, transparent)",
+                      borderColor: "var(--surface-border)",
+                    }}
+                  >
+                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                      Install Lumen
+                    </p>
+                    <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-secondary)" }}>
+                      Add Lumen to your home screen for a cleaner, app-like journal with quick launch and offline access.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {["Offline-ready", "Fast launch", "Less browser chrome"].map((item) => (
+                        <span key={item} className="rounded-full px-3 py-1 text-xs font-semibold" style={{ backgroundColor: "var(--chip-bg)", color: "var(--chip-text)" }}>
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleInstall}
+                      className="mt-4 w-full rounded-full px-4 py-2.5 text-sm font-semibold"
+                      style={{
+                        backgroundColor: "var(--button-bg)",
+                        color: "var(--button-text)",
+                      }}
+                    >
+                      Install App
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {activeTopPanel === "filters" ? (
+            <div
+              className="pointer-events-auto grid gap-4 rounded-[28px] border px-5 py-5 shadow-[0_16px_40px_rgba(0,0,0,0.08)] backdrop-blur-xl md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]"
+              style={{
+                backgroundColor: "color-mix(in srgb, var(--surface) 92%, transparent)",
+                borderColor: "var(--surface-border)",
+              }}
+            >
+              <div className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+                      Sort
+                    </p>
+                    <select
+                      value={sortBy}
+                      onChange={(event) => setSortBy(event.target.value)}
+                      className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
+                      style={{
+                        border: "1px solid var(--surface-border)",
+                        backgroundColor: "var(--surface-strong)",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      <option value="newest">Newest first</option>
+                      <option value="updated">Recently updated</option>
+                      <option value="oldest">Oldest first</option>
+                      <option value="title">Title A-Z</option>
+                    </select>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+                      Timeframe
+                    </p>
+                    <select
+                      value={timeframe}
+                      onChange={(event) => setTimeframe(event.target.value)}
+                      className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
+                      style={{
+                        border: "1px solid var(--surface-border)",
+                        backgroundColor: "var(--surface-strong)",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      <option value="all">All time</option>
+                      <option value="today">Today</option>
+                      <option value="week">Last 7 days</option>
+                      <option value="month">This month</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(event) => setStartDate(event.target.value)}
+                    className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
+                    style={{
+                      border: "1px solid var(--surface-border)",
+                      backgroundColor: "var(--surface-strong)",
+                      color: "var(--text-primary)",
+                    }}
+                  />
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(event) => setEndDate(event.target.value)}
+                    className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
+                    style={{
+                      border: "1px solid var(--surface-border)",
+                      backgroundColor: "var(--surface-strong)",
+                      color: "var(--text-primary)",
+                    }}
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="rounded-full px-4 py-2 text-sm font-medium"
+                    style={{
+                      border: "1px solid var(--surface-border)",
+                      backgroundColor: "var(--button-secondary-bg)",
+                      color: "var(--button-secondary-text)",
+                    }}
+                  >
+                    Clear All Filters
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-4">
+                {allTags.length ? (
+                  <div className="rounded-[24px] p-4" style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                        Tags
+                      </p>
+                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        {selectedTags.length ? `${selectedTags.length} selected` : "Optional"}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex max-h-[10rem] flex-wrap gap-2 overflow-y-auto pr-1">
+                      {allTags.map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggleChip(tag, selectedTags, setSelectedTags)}
+                          className="touch-target rounded-full px-3 py-2 text-xs font-semibold"
+                          style={{
+                            backgroundColor: selectedTags.includes(tag) ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                            color: selectedTags.includes(tag) ? "var(--button-text)" : "var(--button-secondary-text)",
+                            border: selectedTags.includes(tag) ? "none" : "1px solid var(--surface-border)",
+                          }}
+                        >
+                          #{tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {allCollections.length ? (
+                  <div className="rounded-[24px] p-4" style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                        Collections
+                      </p>
+                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        {selectedCollections.length ? `${selectedCollections.length} selected` : "Optional"}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex max-h-[10rem] flex-wrap gap-2 overflow-y-auto pr-1">
+                      {allCollections.map((collection) => (
+                        <button
+                          key={collection}
+                          type="button"
+                          onClick={() => toggleChip(collection, selectedCollections, setSelectedCollections)}
+                          className="touch-target rounded-full px-3 py-2 text-xs font-semibold"
+                          style={{
+                            backgroundColor: selectedCollections.includes(collection) ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                            color: selectedCollections.includes(collection) ? "var(--button-text)" : "var(--button-secondary-text)",
+                            border: selectedCollections.includes(collection) ? "none" : "1px solid var(--surface-border)",
+                          }}
+                        >
+                          {collection}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {activeTopPanel === "library" ? (
+            <div
+              className="pointer-events-auto grid gap-4 rounded-[28px] border px-5 py-5 shadow-[0_16px_40px_rgba(0,0,0,0.08)] backdrop-blur-xl md:grid-cols-[minmax(0,1fr)_auto_auto]"
+              style={{
+                backgroundColor: "color-mix(in srgb, var(--surface) 92%, transparent)",
+                borderColor: "var(--surface-border)",
+              }}
+            >
+              <div className="space-y-3">
+                <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Backup and restore
+                </p>
+                <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  {lastExport
+                    ? `Last export: ${new Date(lastExport.timestamp).toLocaleString()}${lastExport.encrypted ? " (encrypted)" : ""}`
+                    : "No backup recorded yet."}
+                </p>
+                {showSeedTools ? (
+                  <div className="rounded-[22px] p-4" style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}>
+                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                      Review helpers
+                    </p>
+                    <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+                      Load a small sample journal into the host-backed store so the feed, calendar, filters, and detail views are easier to review.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleSeedSamples}
+                      disabled={isSeedingSamples}
+                      className="mt-3 touch-target rounded-full px-4 py-2 text-sm font-semibold transition"
+                      style={{
+                        backgroundColor: "var(--button-bg)",
+                        color: "var(--button-text)",
+                        opacity: isSeedingSamples ? 0.65 : 1,
+                      }}
+                    >
+                      {isSeedingSamples ? "Loading sample entries..." : "Load Sample Journal"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={handleImportClick}
-                className="touch-target rounded-full px-4 py-2 text-sm font-medium transition"
+                className="touch-target rounded-full px-4 py-2 text-sm font-medium"
                 style={{
                   border: "1px solid var(--surface-border)",
                   backgroundColor: "var(--button-secondary-bg)",
@@ -501,206 +950,15 @@ export default function HomePage() {
                 Restore Backup
               </button>
               <ExportButton onExport={handleExport} />
-              <button
-                type="button"
-                onClick={() => setIsSettingsOpen((currentValue) => !currentValue)}
-                className="touch-target rounded-full px-4 py-2 text-sm font-medium transition"
-                style={{
-                  border: "1px solid var(--surface-border)",
-                  backgroundColor: "var(--button-secondary-bg)",
-                  color: "var(--button-secondary-text)",
-                }}
-              >
-                Settings
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1.8fr)_repeat(2,minmax(0,0.8fr))]">
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search titles, writing, tags, and collections..."
-              className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
-              style={{
-                border: "1px solid var(--surface-border)",
-                backgroundColor: "var(--surface)",
-                color: "var(--text-primary)",
-              }}
-            />
-            <select
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value)}
-              className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
-              style={{
-                border: "1px solid var(--surface-border)",
-                backgroundColor: "var(--surface)",
-                color: "var(--text-primary)",
-              }}
-            >
-              <option value="newest">Newest first</option>
-              <option value="updated">Recently updated</option>
-              <option value="oldest">Oldest first</option>
-              <option value="title">Title A-Z</option>
-            </select>
-            <select
-              value={timeframe}
-              onChange={(event) => setTimeframe(event.target.value)}
-              className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
-              style={{
-                border: "1px solid var(--surface-border)",
-                backgroundColor: "var(--surface)",
-                color: "var(--text-primary)",
-              }}
-            >
-              <option value="all">All time</option>
-              <option value="today">Today</option>
-              <option value="week">Last 7 days</option>
-              <option value="month">This month</option>
-            </select>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-              className="rounded-2xl px-4 py-3 text-sm outline-none"
-              style={{
-                border: "1px solid var(--surface-border)",
-                backgroundColor: "var(--surface)",
-                color: "var(--text-primary)",
-              }}
-            />
-            <input
-              type="date"
-              value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-              className="rounded-2xl px-4 py-3 text-sm outline-none"
-              style={{
-                border: "1px solid var(--surface-border)",
-                backgroundColor: "var(--surface)",
-                color: "var(--text-primary)",
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => setOnlyFavorites((currentValue) => !currentValue)}
-              className="touch-target rounded-full px-4 py-2 text-sm font-medium"
-              style={{
-                backgroundColor: onlyFavorites ? "var(--button-bg)" : "var(--button-secondary-bg)",
-                color: onlyFavorites ? "var(--button-text)" : "var(--button-secondary-text)",
-                border: onlyFavorites ? "none" : "1px solid var(--surface-border)",
-              }}
-            >
-              Favorites
-            </button>
-            <button
-              type="button"
-              onClick={() => setOnlyPinned((currentValue) => !currentValue)}
-              className="touch-target rounded-full px-4 py-2 text-sm font-medium"
-              style={{
-                backgroundColor: onlyPinned ? "var(--button-bg)" : "var(--button-secondary-bg)",
-                color: onlyPinned ? "var(--button-text)" : "var(--button-secondary-text)",
-                border: onlyPinned ? "none" : "1px solid var(--surface-border)",
-              }}
-            >
-              Pinned
-            </button>
-          </div>
-
-          {allTags.length ? (
-            <div className="flex flex-wrap gap-2">
-              {allTags.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => toggleChip(tag, selectedTags, setSelectedTags)}
-                  className="touch-target rounded-full px-3 py-2 text-xs font-semibold"
-                  style={{
-                    backgroundColor: selectedTags.includes(tag) ? "var(--button-bg)" : "var(--button-secondary-bg)",
-                    color: selectedTags.includes(tag) ? "var(--button-text)" : "var(--button-secondary-text)",
-                    border: selectedTags.includes(tag) ? "none" : "1px solid var(--surface-border)",
-                  }}
-                >
-                  #{tag}
-                </button>
-              ))}
             </div>
           ) : null}
 
-          {allCollections.length ? (
-            <div className="flex flex-wrap gap-2">
-              {allCollections.map((collection) => (
-                <button
-                  key={collection}
-                  type="button"
-                  onClick={() => toggleChip(collection, selectedCollections, setSelectedCollections)}
-                  className="touch-target rounded-full px-3 py-2 text-xs font-semibold"
-                  style={{
-                    backgroundColor: selectedCollections.includes(collection) ? "var(--button-bg)" : "var(--button-secondary-bg)",
-                    color: selectedCollections.includes(collection) ? "var(--button-text)" : "var(--button-secondary-text)",
-                    border: selectedCollections.includes(collection) ? "none" : "1px solid var(--surface-border)",
-                  }}
-                >
-                  {collection}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          {installPromptEvent && !isInstalled && !isInstallCardDismissed ? (
+          {activeTopPanel === "settings" ? (
             <div
-              className="flex flex-col gap-3 rounded-[24px] px-4 py-4 md:flex-row md:items-center md:justify-between"
+              className="pointer-events-auto grid gap-4 rounded-[28px] border px-5 py-5 shadow-[0_16px_40px_rgba(0,0,0,0.08)] backdrop-blur-xl md:grid-cols-3"
               style={{
-                backgroundColor: "var(--surface)",
-                border: "1px solid var(--surface-border)",
-              }}
-            >
-              <div>
-                <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                  Install Lumen on this device
-                </p>
-                <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  Secure origins work best. On Android Chrome, install may appear in the browser menu even when the prompt is ready.
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsInstallCardDismissed(true)}
-                  className="touch-target rounded-full px-4 py-2 text-sm font-medium transition"
-                  style={{
-                    border: "1px solid var(--surface-border)",
-                    backgroundColor: "var(--button-secondary-bg)",
-                    color: "var(--button-secondary-text)",
-                  }}
-                >
-                  Later
-                </button>
-                <button
-                  type="button"
-                  onClick={handleInstall}
-                  className="touch-target rounded-full px-4 py-2 text-sm font-semibold transition hover:brightness-110"
-                  style={{
-                    backgroundColor: "var(--button-bg)",
-                    color: "var(--button-text)",
-                  }}
-                >
-                  Install App
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {isSettingsOpen ? (
-            <div
-              className="grid gap-4 rounded-[28px] px-5 py-5 md:grid-cols-3"
-              style={{
-                backgroundColor: "var(--surface)",
-                border: "1px solid var(--surface-border)",
+                backgroundColor: "color-mix(in srgb, var(--surface) 92%, transparent)",
+                borderColor: "var(--surface-border)",
               }}
             >
               <div>
@@ -822,7 +1080,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 py-6 md:px-8">
+      <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 pb-8 pt-28 md:px-8 md:pb-10 md:pt-32">
         <div className="grid gap-4 md:grid-cols-4">
           {[
             ["Entries", reflectionSummary.totalEntries],

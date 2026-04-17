@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { getThemePalette } from "../lib/themes";
 import { formatDate } from "../lib/utils";
 
@@ -17,21 +18,22 @@ export function EntryDetail({
   relatedEntries = [],
   onThisDayEntries = [],
 }) {
+  const router = useRouter();
   const theme = getThemePalette(entry.theme, appearance);
   const handleOpenEntry = (id) => {
-    window.location.assign(`/entry/${id}`);
+    router.push(`/entry/${id}`);
   };
 
   return (
     <main
-      className="min-h-screen px-5 pb-24 pt-5 transition-colors duration-500 md:px-8"
+      className="min-h-screen px-5 pb-24 pt-6 transition-colors duration-500 md:px-8 md:pt-8"
       style={{
         background:
           "radial-gradient(circle at top left, color-mix(in srgb, var(--app-bg-secondary) 48%, transparent), transparent 42%), linear-gradient(180deg, var(--app-bg) 0%, color-mix(in srgb, var(--app-bg) 72%, var(--app-bg-secondary)) 100%)",
       }}
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col">
-        <div className="sticky top-3 z-20 mb-10 flex flex-wrap items-center justify-between gap-4 rounded-full px-3 py-2 backdrop-blur"
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-full px-3 py-2 backdrop-blur"
           style={{
             backgroundColor: "var(--topbar-bg)",
             border: "1px solid var(--surface-border)",

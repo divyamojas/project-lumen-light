@@ -1,13 +1,13 @@
 # Lumen
 
-Lumen is a local-first Next.js 14 Progressive Web App journal designed for calm daily writing on desktop and mobile. Entries stay on-device, the app works as an installable PWA, and the current build now includes richer organization, backup, privacy, and reflection features.
+Lumen is a Next.js 14 Progressive Web App journal designed for calm daily writing on desktop and mobile. The current build keeps a single host-backed journal file as the source of truth for entries, while drafts and privacy settings remain local to each device.
 
 ## Current Architecture
 
 - UI: Next.js 14 App Router with Tailwind CSS and plain JavaScript
-- Storage: IndexedDB for entries with migration from legacy `localStorage`
-- Preferences and drafts: still centralized in `lib/storage.js`
-- Networking: no backend, no auth, no analytics, no cloud sync
+- Storage: host-backed JSON journal file served through Next.js API routes
+- Preferences and drafts: still centralized in `lib/storage.js` and remain local to each device
+- Networking: LAN-accessible host API for shared entry sync, no auth, no analytics, no cloud sync yet
 - PWA: `next-pwa`, manifest, service worker in production builds, install prompt support
 
 ## Current Features
@@ -62,7 +62,9 @@ Android Chrome usually needs a secure origin before install behavior becomes rel
 - Encrypted export wraps the same backup with an AES-GCM passphrase envelope
 - Restore runs through a preview step before entries are imported
 - Privacy settings can store a local passcode hint and enable lock-on-background behavior
-- All journal data remains device-local in the current phase
+- Entry data now lives in `data/journal.json` on the host machine
+- Drafts, UI mode, preview mode, and privacy settings still remain device-local
+- On first run after this change, legacy local entries from a device are merged into the host store once
 
 ## Data Model
 

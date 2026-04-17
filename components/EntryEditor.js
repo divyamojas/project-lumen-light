@@ -250,7 +250,7 @@ export function EntryEditor({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end backdrop-blur-sm" style={{ backgroundColor: "var(--overlay)" }}>
+    <div className="fixed inset-0 z-40 flex items-end overflow-y-auto backdrop-blur-sm md:items-end" style={{ backgroundColor: "var(--overlay)" }}>
       <button
         type="button"
         aria-label="Close entry editor"
@@ -258,7 +258,7 @@ export function EntryEditor({
         className="absolute inset-0 cursor-default"
       />
       <div
-        className="relative z-10 w-full animate-sheet-up rounded-t-[28px] px-5 pb-6 pt-5 md:mx-auto md:mb-8 md:max-w-4xl md:rounded-[28px] md:px-7"
+        className="relative z-10 flex max-h-[92dvh] w-full flex-col animate-sheet-up rounded-t-[28px] px-5 pb-5 pt-5 md:mx-auto md:mb-8 md:max-w-4xl md:rounded-[28px] md:px-7"
         style={{
           backgroundColor: "var(--surface-strong)",
           border: "1px solid var(--surface-border)",
@@ -266,11 +266,12 @@ export function EntryEditor({
             appearance === "light"
               ? "0 -24px 60px rgba(89, 79, 58, 0.16)"
               : "0 -24px 60px rgba(0, 0, 0, 0.35)",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.25rem)",
         }}
       >
         <div className="mx-auto mb-5 h-1.5 w-14 rounded-full md:hidden" style={{ backgroundColor: "var(--surface-border)" }} />
 
-        <div className="sticky top-0 z-10 mb-5 rounded-[24px] pb-3 pt-1" style={{ backgroundColor: "var(--surface-strong)" }}>
+        <div className="mb-4 rounded-[24px] pb-2 pt-1" style={{ backgroundColor: "var(--surface-strong)" }}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="font-[family-name:var(--font-playfair)] text-2xl" style={{ color: "var(--text-primary)" }}>
@@ -334,7 +335,7 @@ export function EntryEditor({
           </div>
         ) : null}
 
-        <div className="space-y-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           <div className="grid gap-4 md:grid-cols-[1.3fr_0.7fr]">
             <div>
               <input
@@ -493,7 +494,7 @@ export function EntryEditor({
           ) : null}
         </div>
 
-        <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-3 border-t pt-4" style={{ borderColor: "var(--surface-border)" }}>
           <button
             type="button"
             onClick={onClose}

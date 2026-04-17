@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import EntryDetail from "../../../components/EntryDetail";
 import EntryEditor from "../../../components/EntryEditor";
 import {
@@ -9,6 +10,7 @@ import {
   deleteEntry,
   duplicateEntry,
   getEntries,
+  getEntriesFresh,
   getEntryById,
   getUiMode,
   saveUiMode,
@@ -17,7 +19,10 @@ import {
 import { findOnThisDayEntries, findRelatedEntries } from "../../../lib/journal.mjs";
 import { resolveAppearance } from "../../../lib/utils";
 
+const REFRESH_DEBOUNCE_MS = 12000;
+
 export default function EntryPage({ params }) {
+  const router = useRouter();
   const [entry, setEntry] = useState(null);
   const [allEntries, setAllEntries] = useState([]);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -28,6 +33,7 @@ export default function EntryPage({ params }) {
   const [mode, setMode] = useState("auto");
   const [appearance, setAppearance] = useState("light");
   const [coordinates, setCoordinates] = useState({ latitude: null, longitude: null });
+  const lastRefreshAtRef = useRef(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -42,6 +48,7 @@ export default function EntryPage({ params }) {
       setEntry(nextEntry);
       setAllEntries(nextEntries);
       setMode(getUiMode());
+      lastRefreshAtRef.current = Date.now();
     };
 
     load();
@@ -64,6 +71,40 @@ export default function EntryPage({ params }) {
       window.clearTimeout(timeoutId);
     };
   }, [toast]);
+
+  useEffect(() => {
+    const refreshEntry = async () => {
+      const [nextEntry, nextEntries] = await Promise.all([
+        getEntryById(params.id, { force: true }),
+        getEntriesFresh(),
+      ]);
+      setEntry(nextEntry);
+      setAllEntries(nextEntries);
+      lastRefreshAtRef.current = Date.now();
+    };
+
+    const refreshIfStale = () => {
+      if (Date.now() - lastRefreshAtRef.current < REFRESH_DEBOUNCE_MS) {
+        return;
+      }
+
+      refreshEntry();
+    };
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshIfStale();
+      }
+    };
+
+    window.addEventListener("focus", refreshIfStale);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+
+    return () => {
+      window.removeEventListener("focus", refreshIfStale);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
+  }, [params.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -128,11 +169,11 @@ export default function EntryPage({ params }) {
 
   const handleBack = () => {
     if (window.history.length > 1) {
-      window.history.back();
+      router.back();
       return;
     }
 
-    window.location.assign("/");
+    router.push("/");
   };
 
   const handleDelete = async () => {
@@ -147,7 +188,8 @@ export default function EntryPage({ params }) {
 
     clearDraft(`edit-${entry.id}`);
     await deleteEntry(entry.id);
-    window.location.assign("/");
+    router.push("/");
+    router.refresh();
   };
 
   const handleUpdate = async (values) => {
@@ -175,7 +217,7 @@ export default function EntryPage({ params }) {
     }
 
     setToast("Duplicate created.");
-    window.location.assign(`/entry/${duplicated.id}`);
+    router.push(`/entry/${duplicated.id}`);
   };
 
   const handleReflect = () => {
@@ -206,7 +248,7 @@ export default function EntryPage({ params }) {
     }
 
     setToast("Follow-up saved.");
-    window.location.assign(`/entry/${created.id}`);
+    router.push(`/entry/${created.id}`);
     return created;
   };
 
@@ -237,7 +279,7 @@ export default function EntryPage({ params }) {
           </p>
           <button
             type="button"
-            onClick={() => window.location.assign("/")}
+            onClick={() => router.push("/")}
             className="mt-4 rounded-full px-4 py-2 text-sm transition"
             style={{
               border: "1px solid var(--surface-border)",
