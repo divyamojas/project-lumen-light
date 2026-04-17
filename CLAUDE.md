@@ -4,6 +4,15 @@
 
 Lumen is a local-first Progressive Web App journal built with Next.js 14 App Router, Tailwind CSS, and plain JavaScript. The current implementation is Phase 1 MVP plus quality-of-life upgrades: entry creation, editing, listing, search, filtering, detail view, deletion, JSON import/export, install-prompt wiring, appearance controls, local draft autosave, PWA manifest/service worker setup, and Dockerized development. There is no backend, no database, no authentication, and no analytics. All persistence is browser `localStorage` only.
 
+## Agent Files
+
+AGENTS.md is a lean Codex-specific context file.
+It is NOT a mirror of CLAUDE.md.
+AGENTS.md contains only: project summary, strict rules,
+file responsibilities, scaffolded-but-not-wired notes,
+and out-of-scope items.
+Do not sync or mirror CLAUDE.md content into AGENTS.md.
+
 ## Full File Structure
 
 - `app/globals.css` : Tailwind layers, global CSS variables, and shared utility styles

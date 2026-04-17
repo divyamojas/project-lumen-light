@@ -1,1 +1,8 @@
 node_modules
+.next/
+*.crt
+*.key
+*.pem
+.env
+.env.local
+.env*.local
