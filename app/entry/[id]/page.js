@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import EntryDetail from "../../../components/EntryDetail";
 import EntryEditor from "../../../components/EntryEditor";
@@ -12,33 +12,33 @@ import {
   getEntries,
   getEntriesFresh,
   getEntryById,
-  getUiMode,
-  saveUiMode,
   updateEntry,
 } from "../../../lib/storage";
 import { findOnThisDayEntries, findRelatedEntries } from "../../../lib/journal.mjs";
-import { resolveAppearance } from "../../../lib/utils";
+import { useAppearance } from "../../../hooks/useAppearance";
 
 const REFRESH_DEBOUNCE_MS = 12000;
+const TOAST_DURATION_MS = 3200;
 
 export default function EntryPage({ params }) {
   const router = useRouter();
   const [entry, setEntry] = useState(null);
   const [allEntries, setAllEntries] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editorValues, setEditorValues] = useState(null);
   const [editorMode, setEditorMode] = useState("edit");
   const [toast, setToast] = useState("");
-  const [mode, setMode] = useState("auto");
-  const [appearance, setAppearance] = useState("light");
-  const [coordinates, setCoordinates] = useState({ latitude: null, longitude: null });
   const lastRefreshAtRef = useRef(0);
+
+  const { mode, appearance, handleModeChange } = useAppearance();
 
   useEffect(() => {
     let isMounted = true;
 
     const load = async () => {
+      setIsLoading(true);
       const [nextEntry, nextEntries] = await Promise.all([getEntryById(params.id), getEntries()]);
 
       if (!isMounted) {
@@ -47,8 +47,8 @@ export default function EntryPage({ params }) {
 
       setEntry(nextEntry);
       setAllEntries(nextEntries);
-      setMode(getUiMode());
       lastRefreshAtRef.current = Date.now();
+      setIsLoading(false);
     };
 
     load();
@@ -63,13 +63,8 @@ export default function EntryPage({ params }) {
       return undefined;
     }
 
-    const timeoutId = window.setTimeout(() => {
-      setToast("");
-    }, 2800);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
+    const timeoutId = window.setTimeout(() => setToast(""), TOAST_DURATION_MS);
+    return () => window.clearTimeout(timeoutId);
   }, [toast]);
 
   useEffect(() => {
@@ -87,7 +82,6 @@ export default function EntryPage({ params }) {
       if (Date.now() - lastRefreshAtRef.current < REFRESH_DEBOUNCE_MS) {
         return;
       }
-
       refreshEntry();
     };
 
@@ -106,74 +100,12 @@ export default function EntryPage({ params }) {
     };
   }, [params.id]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return undefined;
-    }
-
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-
-    const applyAppearance = () => {
-      const nextAppearance = resolveAppearance({
-        mode,
-        systemPrefersDark: mediaQuery.matches,
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude,
-      });
-
-      setAppearance(nextAppearance);
-      document.documentElement.dataset.appearance = nextAppearance;
-    };
-
-    applyAppearance();
-
-    const handleMediaChange = () => {
-      applyAppearance();
-    };
-
-    mediaQuery.addEventListener("change", handleMediaChange);
-    const intervalId = window.setInterval(applyAppearance, 60000);
-
-    return () => {
-      mediaQuery.removeEventListener("change", handleMediaChange);
-      window.clearInterval(intervalId);
-    };
-  }, [coordinates.latitude, coordinates.longitude, mode]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || mode !== "auto" || !navigator.geolocation) {
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setCoordinates({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-      },
-      () => {
-        setCoordinates({ latitude: null, longitude: null });
-      },
-      {
-        enableHighAccuracy: false,
-        timeout: 10000,
-        maximumAge: 1800000,
-      }
-    );
-  }, [mode]);
-
-  const handleModeChange = (nextMode) => {
-    setMode(saveUiMode(nextMode));
-  };
-
   const handleBack = () => {
     if (window.history.length > 1) {
       router.back();
       return;
     }
-
-    router.push("/");
+    router.push("/app");
   };
 
   const handleDelete = async () => {
@@ -188,7 +120,7 @@ export default function EntryPage({ params }) {
 
     clearDraft(`edit-${entry.id}`);
     await deleteEntry(entry.id);
-    router.push("/");
+    router.push("/app");
     router.refresh();
   };
 
@@ -260,6 +192,28 @@ export default function EntryPage({ params }) {
     return entry ? findOnThisDayEntries(entry, allEntries) : [];
   }, [allEntries, entry]);
 
+  if (isLoading) {
+    return (
+      <main
+        className="min-h-screen px-5 pb-24 pt-6 md:px-8 md:pt-8"
+        style={{
+          background:
+            "radial-gradient(circle at top left, color-mix(in srgb, var(--app-bg-secondary) 48%, transparent), transparent 42%), linear-gradient(180deg, var(--app-bg) 0%, color-mix(in srgb, var(--app-bg) 72%, var(--app-bg-secondary)) 100%)",
+        }}
+      >
+        <div className="mx-auto w-full max-w-5xl">
+          <div className="skeleton mb-8 h-12 w-40 rounded-full" />
+          <div className="skeleton h-[420px] w-full rounded-[30px]" />
+          <div className="mt-8 flex justify-end gap-3">
+            <div className="skeleton h-10 w-36 rounded-full" />
+            <div className="skeleton h-10 w-24 rounded-full" />
+            <div className="skeleton h-10 w-24 rounded-full" />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   if (!entry) {
     return (
       <main
@@ -270,17 +224,20 @@ export default function EntryPage({ params }) {
           color: "var(--text-secondary)",
         }}
       >
-        <div>
+        <div className="animate-fade-in">
           <p
             className="font-[family-name:var(--font-playfair)] text-2xl"
             style={{ color: "var(--text-primary)" }}
           >
             Entry not found
           </p>
+          <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+            This entry may have been deleted or the link is incorrect.
+          </p>
           <button
             type="button"
-            onClick={() => router.push("/")}
-            className="mt-4 rounded-full px-4 py-2 text-sm transition"
+            onClick={() => router.push("/app")}
+            className="interactive mt-6 rounded-full px-5 py-2.5 text-sm font-medium transition"
             style={{
               border: "1px solid var(--surface-border)",
               color: "var(--button-secondary-text)",
@@ -317,6 +274,7 @@ export default function EntryPage({ params }) {
         onReflect={handleReflect}
         onDuplicate={handleDuplicate}
         onDelete={handleDelete}
+        onCancelDelete={() => setIsConfirmingDelete(false)}
         appearance={appearance}
         mode={mode}
         onModeChange={handleModeChange}
@@ -326,11 +284,12 @@ export default function EntryPage({ params }) {
 
       {toast ? (
         <div
-          className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full px-4 py-2 text-sm shadow-lg"
+          className="fixed bottom-6 left-1/2 z-40 animate-toast-in rounded-full px-5 py-2.5 text-sm shadow-lg"
           style={{
             backgroundColor: "var(--surface-strong)",
             border: "1px solid var(--surface-border)",
             color: "var(--text-primary)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
           }}
         >
           {toast}

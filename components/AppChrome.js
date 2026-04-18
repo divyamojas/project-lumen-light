@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { getPrivacySettings, verifyPasscode } from "../lib/storage";
 
 export function AppChrome({ children }) {
+  const pathname = usePathname();
   const [isOnline, setIsOnline] = useState(true);
   const [privacySettings, setPrivacySettings] = useState(() => getPrivacySettings());
   const [isLocked, setIsLocked] = useState(() => getPrivacySettings().requireUnlock);
@@ -45,7 +47,7 @@ export function AppChrome({ children }) {
     const valid = await verifyPasscode(passcode);
 
     if (!valid) {
-      setError("That passcode did not match.");
+      setError("Incorrect passcode. Please try again.");
       return;
     }
 
@@ -53,6 +55,15 @@ export function AppChrome({ children }) {
     setPasscode("");
     setIsLocked(false);
   };
+
+  const shouldBypassChrome =
+    pathname === "/" ||
+    pathname === "/auth" ||
+    pathname.startsWith("/auth/");
+
+  if (shouldBypassChrome) {
+    return children;
+  }
 
   return (
     <>
@@ -119,10 +130,12 @@ export function AppChrome({ children }) {
                 setPasscode(event.target.value);
                 setError("");
               }}
+              onKeyDown={(event) => { if (event.key === "Enter") handleUnlock(); }}
               placeholder="Passcode"
+              autoFocus
               className="mt-5 w-full rounded-2xl px-4 py-3 text-base outline-none"
               style={{
-                border: "1px solid var(--surface-border)",
+                border: `1px solid ${error ? "var(--button-danger-bg)" : "var(--surface-border)"}`,
                 backgroundColor: "var(--surface)",
                 color: "var(--text-primary)",
               }}
