@@ -14,6 +14,8 @@ services:
       - .:/app
       - lumen_node_modules:/app/node_modules
     command: sh -c "npm install && npm run dev"
+    networks:
+      - lumen
   proxy:
     image: caddy:2-alpine
     container_name: lumen-proxy
@@ -28,6 +30,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - lumen
 
 volumes:
   lumen_node_modules:
@@ -36,3 +40,8 @@ volumes:
     name: lumen_caddy_data
   caddy_config:
     name: lumen_caddy_config
+
+networks:
+  lumen:
+    name: lumen
+    driver: bridge
