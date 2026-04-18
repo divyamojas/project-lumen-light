@@ -1,17 +1,22 @@
 # Lumen
 
-Lumen is a Next.js 14 Progressive Web App journal designed for calm daily writing on desktop and mobile. The current build keeps a single host-backed journal file as the source of truth for entries, while drafts and privacy settings remain local to each device.
+Lumen is a Next.js 14 Progressive Web App journal for calm daily writing on desktop and mobile. The current build uses backend-authenticated access for the app shell and backend APIs for journal/admin data, while drafts, appearance settings, export metadata, and privacy lock settings remain local to each device.
 
 ## Current Architecture
 
 - UI: Next.js 14 App Router with Tailwind CSS and plain JavaScript
-- Storage: host-backed JSON journal file served through Next.js API routes
-- Preferences and drafts: still centralized in `lib/storage.js` and remain local to each device
-- Networking: LAN-accessible host API for shared entry sync, no auth, no analytics, no cloud sync yet
-- PWA: `next-pwa`, manifest, service worker in production builds, install prompt support
+- Auth: backend-managed authentication with a dedicated `/auth` screen and callback flow
+- Routing: `/` redirects to `/auth` or `/app` based on session state
+- Journal home: `/app`
+- Admin: `/admin`, protected by authentication first and then admin-role checks in the UI
+- Data access: backend API requests for entries, current user, and admin endpoints
+- Local device state: drafts, appearance mode, preview mode, export metadata, and privacy passcode settings stay in `lib/storage.js`
+- PWA: `next-pwa`, manifest, production service worker, install prompt support
 
 ## Current Features
 
+- Login, sign up, password reset, and backend callback handling
+- Auth-gated journal and admin routes
 - Create, edit, duplicate, favorite, and pin entries
 - Organize entries with tags, collections, and related-entry links
 - Search across titles, body text, tags, and collections
@@ -23,16 +28,26 @@ Lumen is a Next.js 14 Progressive Web App journal designed for calm daily writin
 - Plain and encrypted JSON exports
 - Import preview with duplicate and invalid-entry counts before restore
 - Local privacy passcode with blur-on-background behavior
+- Shared `auto`, `light`, and `dark` appearance controls
 - Offline status messaging and Android-friendly install support
+
+## Routes
+
+- `/` : session-aware redirect only
+- `/auth` : public authentication screen
+- `/auth/callback` : backend auth callback completion
+- `/app` : authenticated journal dashboard
+- `/entry/[id]` : authenticated entry detail route
+- `/admin` : authenticated admin route
 
 ## How To Run With Docker
 
 1. Install Docker Desktop or another runtime that supports `docker compose`.
-2. Open a terminal in `/Users/myriad/containers/project-lumen`.
+2. Open a terminal in this project directory.
 3. Start the development stack:
    `docker compose up`
-4. Open `http://localhost:3000`.
-5. For LAN testing, open `http://YOUR_MAC_IP:3000` on your phone.
+4. Open `http://localhost:3000` for the app directly.
+5. Open `https://localhost` if you want to exercise the local HTTPS proxy.
 
 ## Local HTTPS For Android Install Testing
 
@@ -50,25 +65,33 @@ Android Chrome usually needs a secure origin before install behavior becomes rel
 
 ### Notes
 
+- `docker compose up` starts both the app container and the local HTTPS proxy
 - Production-style PWA behavior should be validated with a production build, not `npm run dev`
 - A clean production check inside Docker is:
   `docker compose run --rm -e NODE_ENV=production app npm run build`
 - In production mode, the service worker is emitted to `public/sw.js`
 - Chrome may still show installation from the browser menu instead of an immediate popup
 
-## Backups And Privacy
+## Local Development Scripts
+
+- `npm run dev` : start the Next.js development server on port `3000`
+- `npm run build` : create a production build
+- `npm run start` : run the production server on port `3000`
+- `npm run lint` : run Next.js linting
+- `npm run test` : run `tests/journal.test.mjs`
+
+## Backups, Privacy, And Local State
 
 - Standard export writes a readable JSON backup
 - Encrypted export wraps the same backup with an AES-GCM passphrase envelope
 - Restore runs through a preview step before entries are imported
 - Privacy settings can store a local passcode hint and enable lock-on-background behavior
-- Entry data now lives in `data/journal.json` on the host machine
-- Drafts, UI mode, preview mode, and privacy settings still remain device-local
-- On first run after this change, legacy local entries from a device are merged into the host store once
+- Drafts, UI mode, preview mode, export metadata, and privacy settings remain device-local
+- Auth session state is also mirrored locally so middleware and client routing can agree on access state
 
 ## Data Model
 
-Each entry now includes the original journal fields plus richer organization metadata.
+Each entry includes the journal fields below plus organization metadata used throughout the UI.
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -77,33 +100,45 @@ Each entry now includes the original journal fields plus richer organization met
 | `body` | `string` | Required freeform text |
 | `createdAt` | `string` | ISO timestamp, stable after creation |
 | `updatedAt` | `string` | ISO timestamp refreshed on edits |
-| `accentColor` | `object` | Random accent object selected once |
+| `accentColor` | `object` | Accent object selected on creation |
 | `theme` | `string` | Currently still defaults to `"neutral"` |
 | `tags` | `string[]` | Normalized tag slugs |
-| `collection` | `string` | Optional simple grouping label |
+| `collection` | `string` | Optional grouping label |
 | `favorite` | `boolean` | Highlighted entry flag |
 | `pinned` | `boolean` | Feed-priority entry flag |
 | `checklist` | `object[]` | Parsed checklist items derived from body text or saved state |
+| `promptId` | `string` | Optional prompt reference used by the editor |
+| `templateId` | `string` | Optional template reference used by the editor |
 | `relatedEntryIds` | `string[]` | Optional lightweight entry relationships |
 
 ## Folder Structure
 
-- `app/` : routes, layout, and global styles
-- `components/` : UI surfaces including editor, cards, detail view, app shell, and import/export controls
-- `lib/storage.js` : all persistence, migration, export/import, and privacy helpers
+- `app/` : routes, layout, global styles, auth pages, and dashboard pages
+- `components/` : UI surfaces including auth, editor, cards, detail view, app shell, and import/export controls
+- `hooks/` : shared client hooks such as appearance handling
+- `lib/storage.js` : local persistence, drafts, privacy, import/export, preferences, auth session persistence
+- `lib/auth.js` : backend auth helpers and callback handling
+- `lib/admin.js` : admin API client helpers
 - `lib/journal.mjs` : filtering, summaries, prompts, templates, and view-model utilities
 - `lib/themes.js` : theme palette map
 - `lib/utils.js` : ID, date, accent, and appearance helpers
 - `public/` : manifest, icons, and generated service worker output in production
 - `tests/` : lightweight Node tests for journal logic
+- `middleware.js` : route-level auth redirects
 
 ## Security Notes
 
-- `.next/` is excluded from version control — it is build output only
+- `.next/` is excluded from version control because it is build output
 - Never commit `*.crt`, `*.key`, or `*.pem` files
 - Local HTTPS certificates generated by Caddy are for testing only and must never be committed
-- Never commit AWS credentials, `.env`, or `.env.local` files
-- Environment variable usage begins in Phase 2 for AWS-oriented work
+- Never commit secrets such as `.env` or `.env.local`
+- Admin access should never be exposed through public routing without authentication
+
+## Scaffolded But Not Yet Wired
+
+- `entry.theme` still defaults to `"neutral"`
+- `THEMES` drives rendering but no sentiment inference runs at runtime
+- Natural-language retrieval and AI reflection generation are not runtime features yet
 
 ## Planned Phases
 
