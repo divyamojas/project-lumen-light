@@ -12,6 +12,7 @@ export function EntryDetail({
   onReflect,
   onDuplicate,
   onDelete,
+  onCancelDelete,
   appearance = "dark",
   mode = "auto",
   onModeChange,
@@ -20,9 +21,12 @@ export function EntryDetail({
 }) {
   const router = useRouter();
   const theme = getThemePalette(entry.theme, appearance);
+
   const handleOpenEntry = (id) => {
     router.push(`/entry/${id}`);
   };
+
+  const checkmarkColor = appearance === "dark" ? "#f3efe9" : "#111827";
 
   return (
     <main
@@ -33,7 +37,9 @@ export function EntryDetail({
       }}
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-full px-3 py-2 backdrop-blur"
+        {/* Top navigation bar */}
+        <div
+          className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-full px-3 py-2 backdrop-blur"
           style={{
             backgroundColor: "var(--topbar-bg)",
             border: "1px solid var(--surface-border)",
@@ -42,7 +48,7 @@ export function EntryDetail({
           <button
             type="button"
             onClick={onBack}
-            className="touch-target inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm transition"
+            className="interactive touch-target inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm transition"
             style={{
               border: "1px solid var(--surface-border)",
               backgroundColor: "var(--button-secondary-bg)",
@@ -84,8 +90,9 @@ export function EntryDetail({
           </div>
         </div>
 
+        {/* Entry article */}
         <article
-          className="rounded-[30px] p-6 backdrop-blur md:p-10"
+          className="animate-fade-in rounded-[30px] p-6 backdrop-blur md:p-10"
           style={{
             backgroundColor: theme.cardBg,
             border: "1px solid var(--surface-border)",
@@ -118,10 +125,7 @@ export function EntryDetail({
 
           <h1
             className="mt-4 font-[family-name:var(--font-playfair)] text-4xl md:text-5xl"
-            style={{
-              color: "var(--text-primary)",
-              overflowWrap: "anywhere",
-            }}
+            style={{ color: "var(--text-primary)", overflowWrap: "anywhere" }}
           >
             {entry.title}
           </h1>
@@ -142,16 +146,16 @@ export function EntryDetail({
 
           <div
             className="mt-8 max-w-[70ch] whitespace-pre-wrap text-base leading-[1.8]"
-            style={{
-              color: "var(--text-primary)",
-              overflowWrap: "anywhere",
-            }}
+            style={{ color: "var(--text-primary)", overflowWrap: "anywhere" }}
           >
             {entry.body}
           </div>
 
           {entry.checklist?.length ? (
-            <div className="mt-8 rounded-[24px] p-4" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+            <div
+              className="mt-8 rounded-[24px] p-4"
+              style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}
+            >
               <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
                 Checklist
               </p>
@@ -160,16 +164,18 @@ export function EntryDetail({
                   <li key={item.id} className="flex items-center gap-3 text-sm" style={{ color: "var(--text-secondary)" }}>
                     <span
                       aria-hidden="true"
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full"
+                      className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
                       style={{
                         backgroundColor: item.checked ? theme.accent : "transparent",
-                        border: `1px solid ${theme.accent}`,
-                        color: item.checked ? "#111827" : theme.accent,
+                        border: `1.5px solid ${theme.accent}`,
+                        color: item.checked ? checkmarkColor : theme.accent,
                       }}
                     >
                       {item.checked ? "✓" : ""}
                     </span>
-                    <span>{item.text}</span>
+                    <span style={{ textDecoration: item.checked ? "line-through" : "none", opacity: item.checked ? 0.6 : 1 }}>
+                      {item.text}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -177,11 +183,12 @@ export function EntryDetail({
           ) : null}
         </article>
 
+        {/* Action row */}
         <div className="mt-8 flex flex-wrap justify-end gap-3">
           <button
             type="button"
             onClick={onReflect}
-            className="touch-target rounded-full px-4 py-2 text-sm font-medium transition"
+            className="interactive touch-target rounded-full px-4 py-2 text-sm font-medium transition"
             style={{
               border: "1px solid var(--surface-border)",
               backgroundColor: "var(--button-secondary-bg)",
@@ -193,7 +200,7 @@ export function EntryDetail({
           <button
             type="button"
             onClick={onDuplicate}
-            className="touch-target rounded-full px-4 py-2 text-sm font-medium transition"
+            className="interactive touch-target rounded-full px-4 py-2 text-sm font-medium transition"
             style={{
               border: "1px solid var(--surface-border)",
               backgroundColor: "var(--button-secondary-bg)",
@@ -205,7 +212,7 @@ export function EntryDetail({
           <button
             type="button"
             onClick={onEdit}
-            className="touch-target rounded-full px-4 py-2 text-sm font-medium transition"
+            className="interactive touch-target rounded-full px-4 py-2 text-sm font-medium transition"
             style={{
               border: "1px solid var(--surface-border)",
               backgroundColor: "var(--button-secondary-bg)",
@@ -214,19 +221,59 @@ export function EntryDetail({
           >
             Edit Entry
           </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="touch-target rounded-full px-4 py-2 text-sm transition"
-            style={{
-              backgroundColor: "var(--button-danger-bg)",
-              color: "var(--button-danger-text)",
-            }}
-          >
-            {isConfirmingDelete ? "Confirm Delete" : "Delete Entry"}
-          </button>
+
+          {isConfirmingDelete ? (
+            <div
+              className="animate-scale-in flex items-center gap-3 rounded-full px-4 py-2"
+              style={{
+                backgroundColor: "var(--surface)",
+                border: "1px solid var(--surface-border)",
+              }}
+            >
+              <span className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+                Delete this entry?
+              </span>
+              <button
+                type="button"
+                onClick={onDelete}
+                className="interactive rounded-full px-3 py-1.5 text-sm font-semibold"
+                style={{
+                  backgroundColor: "var(--button-danger-bg)",
+                  color: "var(--button-danger-text)",
+                }}
+              >
+                Yes, delete
+              </button>
+              <button
+                type="button"
+                onClick={onCancelDelete}
+                className="interactive rounded-full px-3 py-1.5 text-sm font-medium"
+                style={{
+                  border: "1px solid var(--surface-border)",
+                  backgroundColor: "var(--button-secondary-bg)",
+                  color: "var(--button-secondary-text)",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="interactive touch-target rounded-full px-4 py-2 text-sm font-medium transition"
+              style={{
+                border: "1px solid var(--surface-border)",
+                backgroundColor: "var(--button-secondary-bg)",
+                color: "var(--button-secondary-text)",
+              }}
+            >
+              Delete Entry
+            </button>
+          )}
         </div>
 
+        {/* Related / On This Day sidebars */}
         <div className="mt-10 grid gap-5 lg:grid-cols-2">
           <section
             className="rounded-[28px] p-5"
@@ -245,8 +292,15 @@ export function EntryDetail({
             ) : (
               <div className="mt-3 space-y-3">
                 {relatedEntries.map((item) => (
-                  <button key={item.id} type="button" onClick={() => handleOpenEntry(item.id)} className="block w-full rounded-2xl p-3 text-left transition hover:brightness-105"
-                    style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleOpenEntry(item.id)}
+                    className="interactive block w-full rounded-2xl p-3 text-left transition"
+                    style={{
+                      backgroundColor: "var(--surface-strong)",
+                      border: "1px solid var(--surface-border)",
+                    }}
                   >
                     <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
                       {item.title}
@@ -277,8 +331,15 @@ export function EntryDetail({
             ) : (
               <div className="mt-3 space-y-3">
                 {onThisDayEntries.map((item) => (
-                  <button key={item.id} type="button" onClick={() => handleOpenEntry(item.id)} className="block w-full rounded-2xl p-3 text-left transition hover:brightness-105"
-                    style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleOpenEntry(item.id)}
+                    className="interactive block w-full rounded-2xl p-3 text-left transition"
+                    style={{
+                      backgroundColor: "var(--surface-strong)",
+                      border: "1px solid var(--surface-border)",
+                    }}
                   >
                     <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
                       {item.title}
