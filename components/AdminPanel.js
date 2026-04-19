@@ -159,12 +159,23 @@ export function AdminPanel() {
   const [notice, setNotice] = useState("");
   const [apiError, setApiError] = useState(null);
   const [monitorSnapshot, setMonitorSnapshot] = useState(() => getApiMonitorSnapshot());
+  const [monitorMethodFilter, setMonitorMethodFilter] = useState("ALL");
+  const [monitorStatusFilter, setMonitorStatusFilter] = useState("ALL");
+  const [monitorSearch, setMonitorSearch] = useState("");
+  const [expandedLogId, setExpandedLogId] = useState(null);
 
   const showApiError = (errorInfo) => {
     if (errorInfo) {
       setApiError(errorInfo);
     }
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const section = params.get("section");
+    if (section) setActiveSection(section);
+  }, []);
 
   useEffect(() => {
     if (activeSection !== "api-monitor") {
@@ -177,6 +188,15 @@ export function AdminPanel() {
       setMonitorSnapshot(getApiMonitorSnapshot());
     });
   }, [activeSection]);
+
+  const filteredLogs = useMemo(() => {
+    return monitorSnapshot.logs.filter((log) => {
+      if (monitorMethodFilter !== "ALL" && log.method !== monitorMethodFilter) return false;
+      if (monitorStatusFilter !== "ALL" && log.status !== monitorStatusFilter) return false;
+      if (monitorSearch && !log.url.toLowerCase().includes(monitorSearch.toLowerCase())) return false;
+      return true;
+    });
+  }, [monitorSnapshot.logs, monitorMethodFilter, monitorStatusFilter, monitorSearch]);
 
   useEffect(() => {
     let isMounted = true;
@@ -524,8 +544,7 @@ export function AdminPanel() {
           <nav className="mt-4 space-y-2">
             {SECTIONS.map((section) => {
               const disabled = section.id === "sql" && !isSuperuser;
-              const monitorDisabled = section.id === "api-monitor" && !isSuperuser;
-              const isDisabled = disabled || monitorDisabled;
+              const isDisabled = disabled;
 
               return (
                 <button
@@ -845,10 +864,10 @@ export function AdminPanel() {
             <SectionShell
               eyebrow="Observability"
               title="API Monitor"
-              actions={isSuperuser ? (
+              actions={(
                 <button
                   type="button"
-                  onClick={clearApiMonitorLogs}
+                  onClick={() => { clearApiMonitorLogs(); setExpandedLogId(null); }}
                   className="rounded-full px-4 py-2 text-sm font-semibold"
                   style={{
                     backgroundColor: "var(--button-secondary-bg)",
@@ -858,113 +877,247 @@ export function AdminPanel() {
                 >
                   Clear log
                 </button>
-              ) : null}
+              )}
             >
-              {isSuperuser ? (
-                <>
-                  <div className="grid gap-4 md:grid-cols-4">
-                    {[
-                      { label: "Tracked Requests", value: monitorSnapshot.logs.length },
-                      { label: "Live Requests", value: monitorSnapshot.activeCount },
-                      { label: "Errors", value: monitorSnapshot.logs.filter((log) => log.status === "error").length },
-                      {
-                        label: "Avg Latency",
-                        value: (() => {
-                          const samples = monitorSnapshot.logs.filter((log) => typeof log.durationMs === "number");
-                          return samples.length
-                            ? `${Math.round(samples.reduce((sum, log) => sum + log.durationMs, 0) / samples.length)} ms`
-                            : "—";
-                        })(),
-                      },
-                    ].map((item) => (
-                      <div
-                        key={item.label}
-                        className="rounded-[24px] border p-5"
-                        style={{
-                          borderColor: "var(--surface-border)",
-                          background:
-                            "linear-gradient(180deg, color-mix(in srgb, var(--surface) 94%, transparent), color-mix(in srgb, var(--app-bg-secondary) 32%, var(--surface)))",
-                        }}
-                      >
-                        <p className="text-xs uppercase tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
-                          {item.label}
-                        </p>
-                        <p className="mt-3 text-3xl font-semibold" style={{ color: "var(--text-primary)" }}>
-                          {item.value}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+              {(() => {
+                const samples = monitorSnapshot.logs.filter((log) => typeof log.durationMs === "number");
+                const avgLatency = samples.length
+                  ? Math.round(samples.reduce((sum, log) => sum + log.durationMs, 0) / samples.length)
+                  : null;
+                const errorCount = monitorSnapshot.logs.filter((log) => log.status === "error").length;
+                const successCount = monitorSnapshot.logs.filter((log) => log.status === "success").length;
+                const p95 = (() => {
+                  const sorted = samples.map((l) => l.durationMs).sort((a, b) => a - b);
+                  if (!sorted.length) return null;
+                  return sorted[Math.floor(sorted.length * 0.95)] ?? sorted[sorted.length - 1];
+                })();
 
-                  <div className="mt-5 rounded-[24px] border p-4" style={{ borderColor: "var(--surface-border)" }}>
-                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                      Live request log
-                    </p>
-                    <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-secondary)" }}>
-                      This tracks frontend-observed API requests from auth, journal, and admin flows in the current browser session. Use the overlay for ambient monitoring and this dashboard for deeper inspection.
-                    </p>
-
-                    <div className="mt-4 space-y-3">
-                      {monitorSnapshot.logs.length ? monitorSnapshot.logs.map((log) => (
+                return (
+                  <>
+                    <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+                      {[
+                        { label: "Total", value: monitorSnapshot.logs.length },
+                        { label: "Live", value: monitorSnapshot.activeCount },
+                        { label: "Errors", value: errorCount, danger: errorCount > 0 },
+                        { label: "Success", value: successCount },
+                        { label: "Avg Latency", value: avgLatency !== null ? `${avgLatency} ms` : "—" },
+                        { label: "P95 Latency", value: p95 !== null ? `${p95} ms` : "—" },
+                      ].map((item) => (
                         <div
-                          key={log.id}
-                          className="rounded-[20px] border px-4 py-4"
+                          key={item.label}
+                          className="rounded-[20px] border p-4"
                           style={{
-                            borderColor: "var(--surface-border)",
-                            backgroundColor: "color-mix(in srgb, var(--surface) 88%, transparent)",
+                            borderColor: item.danger
+                              ? "color-mix(in srgb, var(--button-danger-bg) 30%, var(--surface-border))"
+                              : "var(--surface-border)",
+                            background: item.danger
+                              ? "color-mix(in srgb, var(--button-danger-bg) 6%, var(--surface))"
+                              : "linear-gradient(180deg, color-mix(in srgb, var(--surface) 94%, transparent), color-mix(in srgb, var(--app-bg-secondary) 32%, var(--surface)))",
                           }}
                         >
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                                {log.method}
-                              </span>
-                              <span
-                                className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
-                                style={{
-                                  backgroundColor:
-                                    log.status === "error"
-                                      ? "color-mix(in srgb, var(--button-danger-bg) 14%, transparent)"
-                                      : log.status === "pending"
-                                        ? "var(--chip-bg)"
-                                        : "var(--badge-bg)",
-                                  color:
-                                    log.status === "error"
-                                      ? "var(--button-danger-bg)"
-                                      : log.status === "pending"
-                                        ? "var(--chip-text)"
-                                        : "var(--badge-text)",
-                                }}
-                              >
-                                {log.status}
-                              </span>
-                              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                                {log.source}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-4 text-xs" style={{ color: "var(--text-muted)" }}>
-                              <span>{log.statusCode ? `HTTP ${log.statusCode}` : "No status"}</span>
-                              <span>{typeof log.durationMs === "number" ? `${log.durationMs} ms` : "—"}</span>
-                            </div>
-                          </div>
-                          <p className="mt-3 break-all text-sm leading-6" style={{ color: "var(--text-secondary)" }}>
-                            {log.url}
+                          <p className="text-[10px] uppercase tracking-[0.16em]" style={{ color: item.danger ? "var(--button-danger-bg)" : "var(--text-muted)" }}>
+                            {item.label}
                           </p>
-                          {log.errorMessage ? (
-                            <p className="mt-2 text-sm leading-6" style={{ color: "var(--button-danger-bg)" }}>
-                              {log.errorCode ? `${log.errorCode}: ${log.errorMessage}` : log.errorMessage}
-                            </p>
-                          ) : null}
+                          <p className="mt-2 text-2xl font-semibold" style={{ color: item.danger ? "var(--button-danger-bg)" : "var(--text-primary)" }}>
+                            {item.value}
+                          </p>
                         </div>
-                      )) : (
-                        <EmptyState title="No API traffic yet" description="Use the app normally and tracked requests will appear here in real time." />
-                      )}
+                      ))}
                     </div>
-                  </div>
-                </>
-              ) : (
-                <EmptyState title="Superuser access required" description="API monitoring is available only to superusers." />
-              )}
+
+                    <div className="mt-5 rounded-[24px] border" style={{ borderColor: "var(--surface-border)" }}>
+                      <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3" style={{ borderColor: "var(--surface-border)" }}>
+                        <div className="flex flex-wrap gap-1">
+                          {["ALL", "GET", "POST", "PATCH", "DELETE"].map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setMonitorMethodFilter(m)}
+                              className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]"
+                              style={{
+                                backgroundColor: monitorMethodFilter === m ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                                color: monitorMethodFilter === m ? "var(--button-text)" : "var(--button-secondary-text)",
+                                border: "1px solid var(--surface-border)",
+                              }}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {[{ key: "ALL", label: "All" }, { key: "success", label: "Success" }, { key: "error", label: "Error" }, { key: "pending", label: "Pending" }].map((s) => (
+                            <button
+                              key={s.key}
+                              type="button"
+                              onClick={() => setMonitorStatusFilter(s.key)}
+                              className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]"
+                              style={{
+                                backgroundColor: monitorStatusFilter === s.key
+                                  ? (s.key === "error" ? "color-mix(in srgb, var(--button-danger-bg) 14%, transparent)" : "var(--button-bg)")
+                                  : "var(--button-secondary-bg)",
+                                color: monitorStatusFilter === s.key
+                                  ? (s.key === "error" ? "var(--button-danger-bg)" : "var(--button-text)")
+                                  : "var(--button-secondary-text)",
+                                border: "1px solid var(--surface-border)",
+                              }}
+                            >
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          type="text"
+                          value={monitorSearch}
+                          onChange={(e) => setMonitorSearch(e.target.value)}
+                          placeholder="Filter by URL…"
+                          className="ml-auto rounded-full px-4 py-1.5 text-sm"
+                          style={{
+                            backgroundColor: "var(--button-secondary-bg)",
+                            color: "var(--text-primary)",
+                            border: "1px solid var(--surface-border)",
+                            outline: "none",
+                            minWidth: "180px",
+                          }}
+                        />
+                      </div>
+
+                      <div className="divide-y" style={{ "--tw-divide-opacity": 1, borderColor: "var(--surface-border)" }}>
+                        {filteredLogs.length ? filteredLogs.map((log) => {
+                          const isExpanded = expandedLogId === log.id;
+                          return (
+                            <div key={log.id}>
+                              <button
+                                type="button"
+                                onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                                className="w-full px-4 py-3 text-left"
+                                style={{ cursor: "pointer" }}
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="shrink-0 text-xs font-bold w-14" style={{ color: "var(--text-primary)" }}>
+                                      {log.method}
+                                    </span>
+                                    <span
+                                      className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                                      style={{
+                                        backgroundColor:
+                                          log.status === "error"
+                                            ? "color-mix(in srgb, var(--button-danger-bg) 14%, transparent)"
+                                            : log.status === "pending"
+                                              ? "var(--chip-bg)"
+                                              : "var(--badge-bg)",
+                                        color:
+                                          log.status === "error"
+                                            ? "var(--button-danger-bg)"
+                                            : log.status === "pending"
+                                              ? "var(--chip-text)"
+                                              : "var(--badge-text)",
+                                      }}
+                                    >
+                                      {log.status}
+                                    </span>
+                                    <span className="truncate text-xs" style={{ color: "var(--text-secondary)" }}>
+                                      {log.url.replace(/^https?:\/\/[^/]+/, "")}
+                                    </span>
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-3 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                                    <span>{log.statusCode ? `HTTP ${log.statusCode}` : "No status"}</span>
+                                    <span>{typeof log.durationMs === "number" ? `${log.durationMs} ms` : "—"}</span>
+                                    <span>{new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" }).format(new Date(log.startedAt))}</span>
+                                    <span style={{ opacity: 0.4 }}>{isExpanded ? "▲" : "▼"}</span>
+                                  </div>
+                                </div>
+                                {log.errorMessage && !isExpanded ? (
+                                  <p className="mt-1 pl-16 text-xs" style={{ color: "var(--button-danger-bg)" }}>
+                                    {log.errorCode ? `[${log.errorCode}] ` : ""}{log.errorMessage}
+                                  </p>
+                                ) : null}
+                              </button>
+
+                              {isExpanded ? (
+                                <div
+                                  className="border-t px-4 pb-4 pt-3 space-y-4"
+                                  style={{ borderColor: "var(--surface-border)", backgroundColor: "color-mix(in srgb, var(--surface-strong) 40%, transparent)" }}
+                                >
+                                  <div className="grid gap-4 md:grid-cols-2">
+                                    <div>
+                                      <p className="text-[10px] uppercase tracking-[0.16em] mb-1" style={{ color: "var(--text-muted)" }}>Full URL</p>
+                                      <p className="break-all text-sm leading-6" style={{ color: "var(--text-secondary)" }}>{log.url}</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                      {[
+                                        ["Method", log.method],
+                                        ["Status", log.statusCode ? `HTTP ${log.statusCode}` : "No status"],
+                                        ["Duration", typeof log.durationMs === "number" ? `${log.durationMs} ms` : "—"],
+                                        ["Source", log.source],
+                                        ["Time", new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" }).format(new Date(log.startedAt))],
+                                        ["ID", log.id],
+                                      ].map(([k, v]) => (
+                                        <div key={k}>
+                                          <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-muted)" }}>{k}</p>
+                                          <p className="mt-0.5 text-xs break-all" style={{ color: "var(--text-primary)" }}>{v}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {log.requestBody ? (
+                                    <div>
+                                      <p className="text-[10px] uppercase tracking-[0.16em] mb-1" style={{ color: "var(--text-muted)" }}>Request Body</p>
+                                      <pre
+                                        className="overflow-auto rounded-[14px] p-3 text-xs leading-5 whitespace-pre-wrap break-all"
+                                        style={{ backgroundColor: "color-mix(in srgb, var(--surface-strong) 70%, transparent)", color: "var(--text-secondary)" }}
+                                      >
+                                        {(() => {
+                                          try { return JSON.stringify(JSON.parse(log.requestBody), null, 2); }
+                                          catch { return log.requestBody; }
+                                        })()}
+                                      </pre>
+                                    </div>
+                                  ) : null}
+
+                                  {log.responseSnippet ? (
+                                    <div>
+                                      <p className="text-[10px] uppercase tracking-[0.16em] mb-1" style={{ color: "var(--text-muted)" }}>Response</p>
+                                      <pre
+                                        className="overflow-auto rounded-[14px] p-3 text-xs leading-5 whitespace-pre-wrap break-all"
+                                        style={{ backgroundColor: "color-mix(in srgb, var(--surface-strong) 70%, transparent)", color: "var(--text-secondary)" }}
+                                      >
+                                        {(() => {
+                                          try { return JSON.stringify(JSON.parse(log.responseSnippet), null, 2); }
+                                          catch { return log.responseSnippet; }
+                                        })()}
+                                      </pre>
+                                    </div>
+                                  ) : null}
+
+                                  {log.errorMessage ? (
+                                    <div>
+                                      <p className="text-[10px] uppercase tracking-[0.16em] mb-1" style={{ color: "var(--button-danger-bg)" }}>
+                                        Error{log.errorCode ? ` · ${log.errorCode}` : ""}
+                                      </p>
+                                      <p className="text-sm leading-6" style={{ color: "var(--button-danger-bg)" }}>
+                                        {log.errorMessage}
+                                      </p>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        }) : (
+                          <div className="px-4 py-8">
+                            <EmptyState
+                              title={monitorSearch || monitorMethodFilter !== "ALL" || monitorStatusFilter !== "ALL" ? "No matching requests" : "No API traffic yet"}
+                              description={monitorSearch || monitorMethodFilter !== "ALL" || monitorStatusFilter !== "ALL" ? "Try adjusting your filters." : "Use the app normally and tracked requests will appear here in real time."}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </SectionShell>
           ) : null}
 
