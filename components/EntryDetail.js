@@ -88,22 +88,6 @@ export function EntryDetail({
               aria-hidden="true"
               style={{ backgroundColor: theme.accent }}
             />
-            {/* S3 sync indicator */}
-            {(() => {
-              const syncState = entry.type_metadata?.__sync;
-              if (!syncState) return null;
-              const icons = { synced: "☁", pending: "⟳", error: "⚠" };
-              const titles = { synced: "Synced to S3", pending: "Pending S3 sync", error: "Last sync failed" };
-              return (
-                <span
-                  title={titles[syncState] || ""}
-                  className="text-sm"
-                  style={{ color: syncState === "error" ? "#F28A8A" : "var(--text-muted)" }}
-                >
-                  {icons[syncState]}
-                </span>
-              );
-            })()}
           </div>
         </div>
 

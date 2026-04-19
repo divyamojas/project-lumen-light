@@ -82,6 +82,7 @@ export function AuthPage() {
   const searchParams = useSearchParams();
   const { mode, handleModeChange } = useAppearance();
   const nextPath = useMemo(() => sanitizeNextPath(searchParams?.get("next")), [searchParams]);
+  const authReason = searchParams?.get("reason") || "";
   const [authMode, setAuthMode] = useState("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -95,6 +96,12 @@ export function AuthPage() {
       router.replace(nextPath);
     }
   }, [auth.isAuthenticated, auth.isLoading, nextPath, router]);
+
+  useEffect(() => {
+    if (authReason === "session_expired") {
+      setNotice("Your session expired. Please sign in again.");
+    }
+  }, [authReason]);
 
   const handleGoogleSignIn = async () => {
     setError("");

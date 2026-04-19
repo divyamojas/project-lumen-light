@@ -13,6 +13,7 @@ import EntryCard from "../../components/EntryCard";
 import EntryEditor from "../../components/EntryEditor";
 import ExportButton from "../../components/ExportButton";
 import ImportPreviewModal from "../../components/ImportPreviewModal";
+import { useAuth } from "../../components/AuthProvider";
 import { useAppearance } from "../../hooks/useAppearance";
 import {
   clearAuthSession,
@@ -167,6 +168,7 @@ const BackupPanel = memo(function BackupPanel({ lastExport }) {
 });
 
 export function HomePage() {
+  const auth = useAuth();
   const router = useRouter();
   const { mode, appearance, handleModeChange: changeMode } = useAppearance();
   const [entries, setEntries] = useState([]);
@@ -571,8 +573,12 @@ export function HomePage() {
   const handleFullSync = async () => {
     setIsSyncing(true);
     try {
-      await requestJson(`${getApiBase()}/sync/full`, { method: "POST" });
-      setToast("Sync complete. All entries pushed to S3.");
+      const result = await requestJson(`${getApiBase()}/sync/full`, { method: "POST" });
+      setToast(
+        result?.scope === "all-users"
+          ? "Sync complete. All entries pushed to S3."
+          : "Sync complete. Your entries were pushed to S3."
+      );
       await loadSyncStatus();
     } catch {
       setToast("Sync failed. Check your AWS configuration.");
@@ -597,7 +603,7 @@ export function HomePage() {
   const handleDeleteAccount = async () => {
     if (deleteAccountConfirm !== "DELETE MY ACCOUNT") return;
     try {
-      await requestJson(`${getApiBase()}/users/me`, { method: "DELETE", body: JSON.stringify({ confirmation: "DELETE MY ACCOUNT" }) });
+      await requestJson(`${getApiBase()}/users/me`, { method: "DELETE", body: JSON.stringify({ confirm: "DELETE MY ACCOUNT" }) });
       await clearAuthSession();
       router.replace("/landing");
     } catch {
@@ -1426,7 +1432,6 @@ export function HomePage() {
               {syncStatus === null ? (
                 <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
                   S3 sync keeps a copy of every entry in your own AWS S3 bucket. Click "Check status" to see if it is configured.
-                  <a href="/docs/aws-sync" className="ml-1" style={{ color: "var(--accent)" }}>Setup guide →</a>
                 </p>
               ) : syncStatus.enabled ? (
                 <div className="mt-3 space-y-2">
@@ -1437,20 +1442,25 @@ export function HomePage() {
                   <p className="text-xs" style={{ color: syncStatus.reachable ? "var(--text-muted)" : "#F28A8A" }}>
                     {syncStatus.reachable ? "S3 reachable" : "S3 unreachable — check IAM permissions"}
                   </p>
-                  <button
-                    type="button"
-                    onClick={handleFullSync}
-                    disabled={isSyncing}
-                    className="rounded-full px-4 py-2 text-sm font-semibold transition hover:brightness-110 disabled:opacity-50"
-                    style={{ backgroundColor: "var(--button-bg)", color: "var(--button-text)" }}
-                  >
-                    {isSyncing ? "Syncing…" : "Sync all entries now"}
-                  </button>
+                  {auth?.session?.user?.role === "admin" || auth?.session?.user?.role === "superuser" ? (
+                    <button
+                      type="button"
+                      onClick={handleFullSync}
+                      disabled={isSyncing}
+                      className="rounded-full px-4 py-2 text-sm font-semibold transition hover:brightness-110 disabled:opacity-50"
+                      style={{ backgroundColor: "var(--button-bg)", color: "var(--button-text)" }}
+                    >
+                      {isSyncing ? "Syncing…" : "Sync all entries now"}
+                    </button>
+                  ) : (
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      Your entries sync automatically on every save.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  S3 sync is not configured.{" "}
-                  <a href="/docs/aws-sync" style={{ color: "var(--accent)" }}>See setup guide →</a>
+                  S3 sync is not configured.
                 </p>
               )}
             </div>

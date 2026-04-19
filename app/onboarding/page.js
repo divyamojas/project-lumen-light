@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { JOURNAL_TYPE_LIST } from "../../lib/journalTypes";
 import { hasFeature } from "../../lib/featureFlags";
-import { setDefaultJournalType, setEnabledJournalTypes } from "../../lib/storage";
+import { getApiBase, requestJson, setDefaultJournalType, setEnabledJournalTypes } from "../../lib/storage";
 import { useAppearance } from "../../hooks/useAppearance";
 
 const ONBOARDING_KEY = "lumen_onboarding_done";
@@ -39,12 +39,20 @@ export function OnboardingPage() {
     );
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
     setEnabledJournalTypes(selected);
     setDefaultJournalType(selected[0]);
     if (typeof window !== "undefined") {
       localStorage.setItem(ONBOARDING_KEY, "1");
       document.cookie = `lumen_onboarding=1; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+    }
+    try {
+      await requestJson(`${getApiBase()}/users/me/preferences`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled_journal_types: selected }),
+      });
+    } catch (_e) {
+      // Non-fatal — localStorage is the fallback
     }
     router.push("/app");
   };

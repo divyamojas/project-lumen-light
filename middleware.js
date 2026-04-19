@@ -47,8 +47,7 @@ export function middleware(request) {
   }
 
   // Redirect authenticated users who haven't completed onboarding to /onboarding
-  // Only when navigating to /app (not other protected paths)
-  if (hasSession && !hasOnboarding && pathname === "/app") {
+  if (hasSession && !hasOnboarding && !pathname.startsWith("/onboarding")) {
     const redirectUrl = nextUrl.clone();
     redirectUrl.pathname = "/onboarding";
     redirectUrl.search = "";
