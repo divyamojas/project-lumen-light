@@ -4,6 +4,7 @@
 Feature-complete journal MVP with backend-managed authentication now wired into the app.
 The journal still stores and shapes entry data client-side, while authenticated API access, admin access,
 and user identity resolution now come from the FastAPI backend.
+Local startup and HTTPS proxy orchestration are owned by the root `project-lumen/start.sh` and `project-lumen/docker-compose.yml`.
 
 ## Agent Files
 `AGENTS.md` is a lean Codex-specific file and should not mirror this file.
@@ -57,6 +58,7 @@ The frontend currently expects these backend behaviors:
 - `GET /auth/google/start` and aliases
 - `POST /auth/logout`
 - `GET /users/me`
+- `GET /health` for local stack readiness
 
 `lib/auth.js` stores the token, resolves `/users/me`, and treats the backend as the source of truth for auth state.
 
@@ -74,6 +76,11 @@ The current admin UI actively uses:
 - `/admin/sql`
 
 The backend now also exposes broader superuser APIs for auth-user management and generic table CRUD, but the frontend does not yet have polished UI flows for all of them.
+
+## Local Orchestration Notes
+- There is no local compose file in this repo anymore
+- The root repo bootstraps this repo when missing
+- The root repo owns local HTTPS via Caddy and starts this app at `http://localhost:3000`
 
 ## Field Constraints
 - `id` — stable after creation; generated client-side when needed

@@ -41,6 +41,7 @@ Mobile-first and installable.
 ## Backend Contract In Use
 - Auth routes: `/auth/login`, `/auth/sign-up`, `/auth/reset-password`, `/auth/google/start`, `/auth/logout`
 - Session route: `/users/me`
+- Local readiness route expected by the root stack: `/health`
 - Admin routes used by the UI: stats, users, entries, schema, migrations, SQL
 
 ## Scaffolded But NOT Fully Surfaced In UI
@@ -48,6 +49,9 @@ Mobile-first and installable.
 - The frontend admin UI has not yet grown full editors for all of those endpoints
 - `entry.theme` still defaults to `"neutral"`
 - Natural-language retrieval and AI reflection generation are not runtime features
+
+## Local Dev Note
+- This repo is started by the root `project-lumen` orchestrator; do not recreate a second local compose path here
 
 ## Permanently Out of Scope
 - AWS, S3, Lambda, Bedrock, Comprehend in the current runtime
