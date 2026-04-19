@@ -208,6 +208,7 @@ export function HomePage() {
   const [requiresPassphrase, setRequiresPassphrase] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState("");
   const [syncStatus, setSyncStatus] = useState(null);
+  const [isSyncStatusLoading, setIsSyncStatusLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [deleteAccountConfirm, setDeleteAccountConfirm] = useState("");
   const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
@@ -575,13 +576,20 @@ export function HomePage() {
   };
 
   const loadSyncStatus = async () => {
+    setIsSyncStatusLoading(true);
     try {
       const status = await requestJson(`${getApiBase()}/sync/status`);
       setSyncStatus(status);
     } catch {
       setSyncStatus({ enabled: false, error: "Could not reach sync endpoint." });
+    } finally {
+      setIsSyncStatusLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadSyncStatus();
+  }, []);
 
   const handleFullSync = async () => {
     setIsSyncing(true);
@@ -1438,15 +1446,21 @@ export function HomePage() {
                 <button
                   type="button"
                   onClick={loadSyncStatus}
+                  disabled={isSyncStatusLoading}
                   className="rounded-full px-3 py-1.5 text-xs font-medium"
-                  style={{ border: "1px solid var(--surface-border)", color: "var(--text-secondary)", backgroundColor: "var(--button-secondary-bg)" }}
+                  style={{
+                    border: "1px solid var(--surface-border)",
+                    color: "var(--text-secondary)",
+                    backgroundColor: "var(--button-secondary-bg)",
+                    opacity: isSyncStatusLoading ? 0.7 : 1,
+                  }}
                 >
-                  Check status
+                  {isSyncStatusLoading ? "Checking…" : "Check status"}
                 </button>
               </div>
-              {syncStatus === null ? (
+              {syncStatus === null || isSyncStatusLoading ? (
                 <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  S3 backup keeps a copy of every entry in the AWS bucket configured for this Lumen deployment. Click "Check status" to see whether that backup target is available.
+                  Checking whether deployment-managed S3 backup is configured and reachable for this account.
                 </p>
               ) : syncStatus.enabled ? (
                 <div className="mt-3 space-y-2">
