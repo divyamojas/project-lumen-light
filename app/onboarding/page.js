@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { JOURNAL_TYPE_LIST } from "../../lib/journalTypes";
+import { hasFeature } from "../../lib/featureFlags";
 import { setDefaultJournalType, setEnabledJournalTypes } from "../../lib/storage";
 import { useAppearance } from "../../hooks/useAppearance";
 
@@ -73,7 +74,7 @@ export function OnboardingPage() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-          {JOURNAL_TYPE_LIST.map((jt) => {
+          {JOURNAL_TYPE_LIST.filter((t) => hasFeature(`journal_type_${t.id}`)).map((jt) => {
             const isSelected = selected.includes(jt.id);
             const accentColor = ACCENT_RAMP_COLORS[jt.accentRamp] || "#8D98B8";
             return (
