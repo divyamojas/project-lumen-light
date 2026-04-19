@@ -1276,6 +1276,7 @@ export function HomePage() {
           ) : null}
 
           {activeTopPanel === "settings" ? (
+            <>
             <div
               className="pointer-events-auto grid gap-4 rounded-[28px] border px-5 py-5 md:grid-cols-3"
               style={{
@@ -1560,6 +1561,7 @@ export function HomePage() {
                 )}
               </div>
             </div>
+            </>
           ) : null}
         </div>
       </header>
