@@ -15,7 +15,9 @@ import ExportButton from "../../components/ExportButton";
 import ImportPreviewModal from "../../components/ImportPreviewModal";
 import { useAppearance } from "../../hooks/useAppearance";
 import {
+  clearAuthSession,
   createEntry,
+  getApiBase,
   getEntries,
   getEntriesFresh,
   getLastExportMeta,
@@ -23,10 +25,12 @@ import {
   getPrivacySettings,
   importEntries,
   previewImportEntries,
+  requestJson,
   savePreviewMode,
   savePrivacySettings,
   updateEntry,
 } from "../../lib/storage";
+import { THEMES } from "../../lib/themes";
 import {
   buildCalendarMatrix,
   buildReflectionSummary,
@@ -199,6 +203,13 @@ export function HomePage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importPassphrase, setImportPassphrase] = useState("");
   const [requiresPassphrase, setRequiresPassphrase] = useState(false);
+  const [selectedTheme, setSelectedTheme] = useState("");
+  const [syncStatus, setSyncStatus] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [deleteAccountConfirm, setDeleteAccountConfirm] = useState("");
+  const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
+  const [deleteEntriesConfirm, setDeleteEntriesConfirm] = useState("");
+  const [isDeleteEntriesOpen, setIsDeleteEntriesOpen] = useState(false);
   const searchInputRef = useRef(null);
   const importInputRef = useRef(null);
   const lastRefreshAtRef = useRef(0);
@@ -315,9 +326,13 @@ export function HomePage() {
       onlyPinned,
     });
 
-    const dateScopedEntries = selectedCalendarDay
-      ? nextEntries.filter((entry) => getDayKey(entry.createdAt) === selectedCalendarDay)
+    const themeScopedEntries = selectedTheme
+      ? nextEntries.filter((entry) => (entry.theme || "neutral") === selectedTheme)
       : nextEntries;
+
+    const dateScopedEntries = selectedCalendarDay
+      ? themeScopedEntries.filter((entry) => getDayKey(entry.createdAt) === selectedCalendarDay)
+      : themeScopedEntries;
 
     return sortEntries(dateScopedEntries, sortBy);
   }, [
@@ -328,6 +343,7 @@ export function HomePage() {
     onlyPinned,
     selectedCalendarDay,
     selectedCollections,
+    selectedTheme,
     selectedTags,
     sortBy,
     startDate,
@@ -543,6 +559,52 @@ export function HomePage() {
     setPrivacyForm((currentValue) => ({ ...currentValue, passcode: "" }));
   };
 
+  const loadSyncStatus = async () => {
+    try {
+      const status = await requestJson(`${getApiBase()}/sync/status`);
+      setSyncStatus(status);
+    } catch {
+      setSyncStatus({ enabled: false, error: "Could not reach sync endpoint." });
+    }
+  };
+
+  const handleFullSync = async () => {
+    setIsSyncing(true);
+    try {
+      await requestJson(`${getApiBase()}/sync/full`, { method: "POST" });
+      setToast("Sync complete. All entries pushed to S3.");
+      await loadSyncStatus();
+    } catch {
+      setToast("Sync failed. Check your AWS configuration.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDeleteAllEntries = async () => {
+    if (deleteEntriesConfirm !== "DELETE ALL ENTRIES") return;
+    try {
+      await requestJson(`${getApiBase()}/users/me/entries`, { method: "DELETE" });
+      await refreshEntries();
+      setIsDeleteEntriesOpen(false);
+      setDeleteEntriesConfirm("");
+      setToast("All entries deleted. Your account is still active.");
+    } catch {
+      setToast("Could not delete entries. Please try again.");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteAccountConfirm !== "DELETE MY ACCOUNT") return;
+    try {
+      await requestJson(`${getApiBase()}/users/me`, { method: "DELETE", body: JSON.stringify({ confirmation: "DELETE MY ACCOUNT" }) });
+      await clearAuthSession();
+      router.replace("/landing");
+    } catch {
+      setToast("Could not delete account. Please try again.");
+    }
+  };
+
   const clearFilters = () => {
     setQuery("");
     setSortBy("newest");
@@ -554,6 +616,7 @@ export function HomePage() {
     setOnlyFavorites(false);
     setOnlyPinned(false);
     setSelectedCalendarDay("");
+    setSelectedTheme("");
     setActiveMonth(new Date().toISOString().slice(0, 7));
     setToast("Filters cleared.");
   };
@@ -579,6 +642,7 @@ export function HomePage() {
     onlyFavorites ? 1 : 0,
     onlyPinned ? 1 : 0,
     selectedCalendarDay ? 1 : 0,
+    selectedTheme ? 1 : 0,
     selectedTags.length,
     selectedCollections.length,
   ].reduce((sum, value) => sum + value, 0);
@@ -862,6 +926,21 @@ export function HomePage() {
                 >
                   Pinned
                 </button>
+                <select
+                  value={selectedTheme}
+                  onChange={(e) => setSelectedTheme(e.target.value)}
+                  className="touch-target rounded-full px-3 py-2 text-sm font-medium"
+                  style={{
+                    backgroundColor: selectedTheme ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                    color: selectedTheme ? "var(--button-text)" : "var(--button-secondary-text)",
+                    border: selectedTheme ? "none" : "1px solid var(--surface-border)",
+                  }}
+                >
+                  <option value="">Mood</option>
+                  {Object.entries(THEMES).map(([key, t]) => (
+                    <option key={key} value={key}>{t.label}</option>
+                  ))}
+                </select>
                 {[
                   ["filters", activeFilterCount ? `Filters (${activeFilterCount})` : "Filters"],
                   ["library", "Library"],
@@ -1317,6 +1396,168 @@ export function HomePage() {
                     Last backup: {new Date(lastExport.timestamp).toLocaleString()} {lastExport.encrypted ? "(encrypted)" : ""}
                   </p>
                 ) : null}
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <a href="/legal/privacy" className="text-xs" style={{ color: "var(--text-muted)" }}>Privacy policy</a>
+                  <a href="/legal/terms" className="text-xs" style={{ color: "var(--text-muted)" }}>Terms of service</a>
+                </div>
+              </div>
+            </div>
+
+            {/* AWS Sync section */}
+            <div
+              className="pointer-events-auto mt-3 rounded-[28px] border px-5 py-5"
+              style={{
+                backgroundColor: "color-mix(in srgb, var(--surface) 92%, transparent)",
+                borderColor: "var(--surface-border)",
+              }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>AWS Sync</p>
+                <button
+                  type="button"
+                  onClick={loadSyncStatus}
+                  className="rounded-full px-3 py-1.5 text-xs font-medium"
+                  style={{ border: "1px solid var(--surface-border)", color: "var(--text-secondary)", backgroundColor: "var(--button-secondary-bg)" }}
+                >
+                  Check status
+                </button>
+              </div>
+              {syncStatus === null ? (
+                <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  S3 sync keeps a copy of every entry in your own AWS S3 bucket. Click "Check status" to see if it is configured.
+                  <a href="/docs/aws-sync" className="ml-1" style={{ color: "var(--accent)" }}>Setup guide →</a>
+                </p>
+              ) : syncStatus.enabled ? (
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                    Sync enabled · Bucket: <span style={{ color: "var(--text-primary)" }}>{syncStatus.bucket || "—"}</span>
+                    {syncStatus.region ? ` · ${syncStatus.region}` : ""}
+                  </p>
+                  <p className="text-xs" style={{ color: syncStatus.reachable ? "var(--text-muted)" : "#F28A8A" }}>
+                    {syncStatus.reachable ? "S3 reachable" : "S3 unreachable — check IAM permissions"}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleFullSync}
+                    disabled={isSyncing}
+                    className="rounded-full px-4 py-2 text-sm font-semibold transition hover:brightness-110 disabled:opacity-50"
+                    style={{ backgroundColor: "var(--button-bg)", color: "var(--button-text)" }}
+                  >
+                    {isSyncing ? "Syncing…" : "Sync all entries now"}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  S3 sync is not configured.{" "}
+                  <a href="/docs/aws-sync" style={{ color: "var(--accent)" }}>See setup guide →</a>
+                </p>
+              )}
+            </div>
+
+            {/* Account deletion */}
+            <div
+              className="pointer-events-auto mt-3 rounded-[28px] border px-5 py-5"
+              style={{
+                backgroundColor: "color-mix(in srgb, var(--surface) 92%, transparent)",
+                borderColor: "var(--surface-border)",
+              }}
+            >
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Danger zone</p>
+
+              {/* Delete all entries */}
+              <div className="mt-4 space-y-2">
+                <p className="text-sm" style={{ color: "var(--text-secondary)" }}>Delete all entries (keep account)</p>
+                {isDeleteEntriesOpen ? (
+                  <div className="space-y-2">
+                    <p className="text-xs" style={{ color: "#F28A8A" }}>
+                      This will permanently delete all {entries.length} entries. Type DELETE ALL ENTRIES to confirm.
+                    </p>
+                    <input
+                      type="text"
+                      value={deleteEntriesConfirm}
+                      onChange={(e) => setDeleteEntriesConfirm(e.target.value)}
+                      placeholder="DELETE ALL ENTRIES"
+                      className="w-full rounded-2xl px-4 py-2 text-sm outline-none"
+                      style={{ border: "1px solid #F28A8A", backgroundColor: "var(--surface-strong)", color: "var(--text-primary)" }}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDeleteAllEntries}
+                        disabled={deleteEntriesConfirm !== "DELETE ALL ENTRIES"}
+                        className="rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                        style={{ backgroundColor: "var(--button-danger-bg)", color: "var(--button-danger-text)" }}
+                      >
+                        Delete all entries
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setIsDeleteEntriesOpen(false); setDeleteEntriesConfirm(""); }}
+                        className="rounded-full px-4 py-2 text-sm font-medium"
+                        style={{ border: "1px solid var(--surface-border)", color: "var(--text-secondary)", backgroundColor: "var(--button-secondary-bg)" }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsDeleteEntriesOpen(true)}
+                    className="rounded-full px-4 py-2 text-sm font-medium"
+                    style={{ border: "1px solid #F28A8A", color: "#F28A8A", backgroundColor: "transparent" }}
+                  >
+                    Delete all entries
+                  </button>
+                )}
+              </div>
+
+              {/* Delete account */}
+              <div className="mt-5 space-y-2">
+                <p className="text-sm" style={{ color: "var(--text-secondary)" }}>Delete account and all data</p>
+                {isDeleteAccountOpen ? (
+                  <div className="space-y-2">
+                    <p className="text-xs" style={{ color: "#F28A8A" }}>
+                      This will permanently delete your account and all {entries.length} entries. This cannot be undone. Type DELETE MY ACCOUNT to confirm.
+                    </p>
+                    <input
+                      type="text"
+                      value={deleteAccountConfirm}
+                      onChange={(e) => setDeleteAccountConfirm(e.target.value)}
+                      placeholder="DELETE MY ACCOUNT"
+                      className="w-full rounded-2xl px-4 py-2 text-sm outline-none"
+                      style={{ border: "1px solid #F28A8A", backgroundColor: "var(--surface-strong)", color: "var(--text-primary)" }}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDeleteAccount}
+                        disabled={deleteAccountConfirm !== "DELETE MY ACCOUNT"}
+                        className="rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                        style={{ backgroundColor: "var(--button-danger-bg)", color: "var(--button-danger-text)" }}
+                      >
+                        Delete account
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setIsDeleteAccountOpen(false); setDeleteAccountConfirm(""); }}
+                        className="rounded-full px-4 py-2 text-sm font-medium"
+                        style={{ border: "1px solid var(--surface-border)", color: "var(--text-secondary)", backgroundColor: "var(--button-secondary-bg)" }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsDeleteAccountOpen(true)}
+                    className="rounded-full px-4 py-2 text-sm font-semibold"
+                    style={{ backgroundColor: "var(--button-danger-bg)", color: "var(--button-danger-text)" }}
+                  >
+                    Delete account
+                  </button>
+                )}
               </div>
             </div>
           ) : null}
