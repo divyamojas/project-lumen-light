@@ -1,6 +1,19 @@
-# Lumen
+# Lumen — Frontend
 
-Lumen is a Next.js 14 Progressive Web App journal for calm daily writing on desktop and mobile. The current build uses backend-authenticated access for the app shell and backend APIs for journal/admin data, while drafts, appearance settings, export metadata, and privacy lock settings remain local to each device.
+> **Your journal. Your AWS. Your AI.**
+> A private, calm journal suite where your data lives on your own cloud —
+> and where AI works *on your data*, not on someone else's servers.
+
+Lumen is a journaling suite for six use cases: personal reflection, science
+and research logging, travel, fitness, work, and creative writing. Each type
+gets purpose-built fields and prompts. All entries sync to your own AWS S3
+bucket. An AI layer (in progress) will let you query your journal in natural
+language using Bedrock — without your data ever leaving your infrastructure.
+
+**Status:** Phase 1 (core journaling) complete. Phase 2 (S3 sync) in progress.
+Phases 3–5 (Bedrock, NL query, sentiment) on the roadmap.
+
+---
 
 ## Current Architecture
 
