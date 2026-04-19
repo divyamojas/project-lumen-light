@@ -17,7 +17,6 @@ import { useAuth } from "../../components/AuthProvider";
 import { useAppearance } from "../../hooks/useAppearance";
 import {
   clearAuthSession,
-  consumePendingNotice,
   createEntry,
   getApiBase,
   getEntries,
@@ -37,6 +36,7 @@ import {
   buildCalendarMatrix,
   buildReflectionSummary,
   buildTimelineGroups,
+  consumePendingNotice,
   filterEntries,
   formatRangeLabel,
   getAllCollections,
