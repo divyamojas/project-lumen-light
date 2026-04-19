@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 
 import {
   buildReflectionSummary,
+  consumePendingNotice,
   filterEntries,
   normalizeDraft,
   prepareImportPreview,
   resolveEntryEditorRelatedIds,
+  savePendingNotice,
   sortEntries,
 } from "../lib/journal.mjs";
 
@@ -117,6 +119,45 @@ test("resolveEntryEditorRelatedIds falls back to related entry objects", () => {
   ]);
 
   assert.deepEqual(relatedIds, ["entry-1", "entry-2"]);
+});
+
+test("savePendingNotice stores one-shot onboarding notices and clears blanks", () => {
+  const storage = new Map();
+  const adapter = {
+    getItem(key) {
+      return storage.has(key) ? storage.get(key) : null;
+    },
+    setItem(key, value) {
+      storage.set(key, value);
+    },
+    removeItem(key) {
+      storage.delete(key);
+    },
+  };
+
+  assert.equal(savePendingNotice(adapter, "  Sync this later  "), "Sync this later");
+  assert.equal(storage.get("lumen_pending_notice"), "Sync this later");
+  assert.equal(savePendingNotice(adapter, "   "), "");
+  assert.equal(storage.has("lumen_pending_notice"), false);
+});
+
+test("consumePendingNotice returns the message once and clears it", () => {
+  const storage = new Map([["lumen_pending_notice", "Saved locally only"]]);
+  const adapter = {
+    getItem(key) {
+      return storage.has(key) ? storage.get(key) : null;
+    },
+    setItem(key, value) {
+      storage.set(key, value);
+    },
+    removeItem(key) {
+      storage.delete(key);
+    },
+  };
+
+  assert.equal(consumePendingNotice(adapter), "Saved locally only");
+  assert.equal(storage.has("lumen_pending_notice"), false);
+  assert.equal(consumePendingNotice(adapter), "");
 });
 
 test("filterEntries combines query, tags, collections, and favorites", () => {

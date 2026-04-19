@@ -17,6 +17,7 @@ import { useAuth } from "../../components/AuthProvider";
 import { useAppearance } from "../../hooks/useAppearance";
 import {
   clearAuthSession,
+  consumePendingNotice,
   createEntry,
   getApiBase,
   getEntries,
@@ -240,6 +241,18 @@ export function HomePage() {
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const pendingNotice = consumePendingNotice(window.localStorage);
+
+    if (pendingNotice) {
+      setToast(pendingNotice);
+    }
   }, []);
 
   useEffect(() => {

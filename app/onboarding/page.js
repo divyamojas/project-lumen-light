@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { JOURNAL_TYPE_LIST } from "../../lib/journalTypes";
+import { savePendingNotice } from "../../lib/journal.mjs";
 import { hasFeature } from "../../lib/featureFlags";
 import { getApiBase, requestJson, setDefaultJournalType, setEnabledJournalTypes } from "../../lib/storage";
 import { useAppearance } from "../../hooks/useAppearance";
@@ -45,6 +46,7 @@ export function OnboardingPage() {
     setDefaultJournalType(defaultJournalType);
     if (typeof window !== "undefined") {
       localStorage.setItem(ONBOARDING_KEY, "1");
+      savePendingNotice(window.localStorage, "");
       document.cookie = `lumen_onboarding=1; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
     }
     try {
@@ -56,7 +58,12 @@ export function OnboardingPage() {
         }),
       });
     } catch (_e) {
-      // Non-fatal — localStorage is the fallback
+      if (typeof window !== "undefined") {
+        savePendingNotice(
+          window.localStorage,
+          "Preferences were only saved on this device. Reconnect and update settings to sync them to your account."
+        );
+      }
     }
     router.push("/app");
   };
