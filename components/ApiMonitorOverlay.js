@@ -36,12 +36,13 @@ export function ApiMonitorOverlay() {
   const auth = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isClosed, setIsClosed] = useState(false);
   const [memoryNotice, setMemoryNotice] = useState("");
   const [snapshot, setSnapshot] = useState(() => getApiMonitorSnapshot());
   const { panelRef, position, isDragging, handleDragStart } = useFloatingPanel({
     storageKey: "lumen_api_monitor_position",
     fallbackWidth: 420,
-    fallbackHeight: isOpen && !isMinimized ? 420 : 86,
+    fallbackHeight: isClosed ? 52 : isOpen && !isMinimized ? 420 : 86,
     getDefaultPosition: ({ viewportHeight }) => ({
       x: 16,
       y: Math.max(16, viewportHeight - 120),
@@ -80,6 +81,7 @@ export function ApiMonitorOverlay() {
       const detail = event?.detail || {};
       setIsMinimized(true);
       setIsOpen(false);
+      setIsClosed(false);
       setMemoryNotice(
         detail.usedMB
           ? `Memory guard trimmed monitor activity at ${detail.usedMB} MB.`
@@ -123,6 +125,31 @@ export function ApiMonitorOverlay() {
     return null;
   }
 
+  const handleToggleMinimize = () => {
+    setIsClosed(false);
+    setIsMinimized((current) => {
+      const nextValue = !current;
+
+      if (nextValue) {
+        setIsOpen(false);
+      }
+
+      return nextValue;
+    });
+  };
+
+  const handleOpenPanel = () => {
+    setIsClosed(false);
+    setIsMinimized(false);
+    setIsOpen(true);
+  };
+
+  const handleClosePanel = () => {
+    setIsOpen(false);
+    setIsMinimized(false);
+    setIsClosed(true);
+  };
+
   return (
     <div
       ref={panelRef}
@@ -139,6 +166,24 @@ export function ApiMonitorOverlay() {
             }
       }
     >
+      {isClosed ? (
+        <button
+          type="button"
+          onClick={handleOpenPanel}
+          className="w-full rounded-full border px-4 py-3 text-left shadow-[0_24px_50px_rgba(14,18,26,0.22)] backdrop-blur-xl"
+          style={{
+            backgroundColor: "color-mix(in srgb, var(--surface-strong) 92%, transparent)",
+            borderColor: "var(--surface-border)",
+          }}
+        >
+          <span className="block text-[11px] uppercase tracking-[0.22em]" style={{ color: "var(--text-muted)" }}>
+            API Monitor
+          </span>
+          <span className="mt-1 block text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+            Reopen logs monitor
+          </span>
+        </button>
+      ) : (
       <div
         className="rounded-[26px] border shadow-[0_24px_50px_rgba(14,18,26,0.22)] backdrop-blur-xl"
         style={{
@@ -171,7 +216,7 @@ export function ApiMonitorOverlay() {
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setIsMinimized((current) => !current)}
+              onClick={handleToggleMinimize}
               className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
               style={{
                 backgroundColor: "var(--button-secondary-bg)",
@@ -184,14 +229,14 @@ export function ApiMonitorOverlay() {
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setIsOpen((current) => !current)}
+              onClick={handleClosePanel}
               className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
               style={{
                 backgroundColor: summary.errors ? "color-mix(in srgb, var(--button-danger-bg) 14%, transparent)" : "var(--badge-bg)",
                 color: summary.errors ? "var(--button-danger-bg)" : "var(--badge-text)",
               }}
             >
-              {isOpen ? "Hide" : "Open"}
+              Close
             </button>
           </div>
         </div>
@@ -302,6 +347,7 @@ export function ApiMonitorOverlay() {
           </div>
         ) : null}
       </div>
+      )}
     </div>
   );
 }

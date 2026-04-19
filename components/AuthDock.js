@@ -27,13 +27,14 @@ export function AuthDock() {
   } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isClosed, setIsClosed] = useState(false);
   const [error, setError] = useState("");
   const [apiError, setApiError] = useState(null);
   const [memoryNotice, setMemoryNotice] = useState("");
   const { panelRef, position, isDragging, handleDragStart } = useFloatingPanel({
     storageKey: "lumen_access_dock_position",
     fallbackWidth: 380,
-    fallbackHeight: isExpanded && !isMinimized ? 260 : 88,
+    fallbackHeight: isClosed ? 52 : isExpanded && !isMinimized ? 260 : 88,
     getDefaultPosition: ({ viewportWidth, viewportHeight, panelWidth }) => ({
       x: Math.max(16, viewportWidth - panelWidth - 16),
       y: Math.max(16, viewportHeight - 120),
@@ -66,6 +67,7 @@ export function AuthDock() {
       const detail = event?.detail || {};
       setIsExpanded(false);
       setIsMinimized(true);
+      setIsClosed(false);
       setMemoryNotice(
         detail.usedMB
           ? `Collapsed to reduce memory pressure at ${detail.usedMB} MB.`
@@ -108,8 +110,35 @@ export function AuthDock() {
     if (result?.fallback) {
       setError("Backend Google auth is not available yet.");
       setApiError(result.errorInfo || null);
+      setIsClosed(false);
+      setIsMinimized(false);
       setIsExpanded(true);
     }
+  };
+
+  const handleToggleMinimize = () => {
+    setIsClosed(false);
+    setIsMinimized((current) => {
+      const nextValue = !current;
+
+      if (nextValue) {
+        setIsExpanded(false);
+      }
+
+      return nextValue;
+    });
+  };
+
+  const handleOpenPanel = () => {
+    setIsClosed(false);
+    setIsMinimized(false);
+    setIsExpanded(true);
+  };
+
+  const handleClosePanel = () => {
+    setIsExpanded(false);
+    setIsMinimized(false);
+    setIsClosed(true);
   };
 
   return (
@@ -128,6 +157,24 @@ export function AuthDock() {
             }
       }
     >
+      {isClosed ? (
+        <button
+          type="button"
+          onClick={handleOpenPanel}
+          className="w-full rounded-full border px-4 py-3 text-left shadow-[0_24px_50px_rgba(14,18,26,0.18)] backdrop-blur-xl"
+          style={{
+            backgroundColor: "color-mix(in srgb, var(--surface-strong) 88%, transparent)",
+            borderColor: "var(--surface-border)",
+          }}
+        >
+          <span className="block text-[11px] uppercase tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
+            Access
+          </span>
+          <span className="mt-1 block text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+            Reopen access dock
+          </span>
+        </button>
+      ) : (
       <div
         className="rounded-[28px] border px-4 py-3 shadow-[0_24px_50px_rgba(14,18,26,0.18)] backdrop-blur-xl"
         style={{
@@ -160,7 +207,7 @@ export function AuthDock() {
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setIsMinimized((current) => !current)}
+              onClick={handleToggleMinimize}
               className="touch-target rounded-full px-3 py-2 text-xs font-medium interactive"
               style={{
                 backgroundColor: "var(--button-secondary-bg)",
@@ -173,7 +220,7 @@ export function AuthDock() {
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setIsExpanded((current) => !current)}
+              onClick={handleClosePanel}
               className="touch-target rounded-full px-4 py-2 text-sm font-medium interactive"
               style={{
                 backgroundColor: "var(--button-secondary-bg)",
@@ -181,7 +228,7 @@ export function AuthDock() {
                 border: "1px solid var(--surface-border)",
               }}
             >
-              {isExpanded ? "Close" : "Open"}
+              Close
             </button>
           </div>
         </div>
@@ -266,6 +313,7 @@ export function AuthDock() {
           </div>
         ) : null}
       </div>
+      )}
       <ApiErrorSnackbar error={apiError} onClose={() => setApiError(null)} />
     </div>
   );
