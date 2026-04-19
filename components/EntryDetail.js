@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { getExtraFields, getJournalType } from "../lib/journalTypes";
 import { getThemePalette } from "../lib/themes";
 import { formatDate } from "../lib/utils";
 
@@ -87,6 +88,22 @@ export function EntryDetail({
               aria-hidden="true"
               style={{ backgroundColor: theme.accent }}
             />
+            {/* S3 sync indicator */}
+            {(() => {
+              const syncState = entry.type_metadata?.__sync;
+              if (!syncState) return null;
+              const icons = { synced: "☁", pending: "⟳", error: "⚠" };
+              const titles = { synced: "Synced to S3", pending: "Pending S3 sync", error: "Last sync failed" };
+              return (
+                <span
+                  title={titles[syncState] || ""}
+                  className="text-sm"
+                  style={{ color: syncState === "error" ? "#F28A8A" : "var(--text-muted)" }}
+                >
+                  {icons[syncState]}
+                </span>
+              );
+            })()}
           </div>
         </div>
 
@@ -150,6 +167,40 @@ export function EntryDetail({
           >
             {entry.body}
           </div>
+
+          {/* Type metadata details */}
+          {(() => {
+            const extraFields = getExtraFields(entry.journal_type);
+            const meta = entry.type_metadata || {};
+            const populated = extraFields.filter((f) => meta[f.key] && String(meta[f.key]).trim());
+            if (!populated.length) return null;
+            const jt = getJournalType(entry.journal_type);
+            return (
+              <details className="mt-8" open={false}>
+                <summary
+                  className="cursor-pointer list-none rounded-[24px] p-4 text-sm font-semibold"
+                  style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)", color: "var(--text-primary)" }}
+                >
+                  {jt.icon} {jt.label} details
+                </summary>
+                <div
+                  className="mt-2 space-y-3 rounded-[24px] p-4"
+                  style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}
+                >
+                  {populated.map((field) => (
+                    <div key={field.key}>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--text-muted)" }}>
+                        {field.label}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6" style={{ color: "var(--text-secondary)" }}>
+                        {meta[field.key]}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            );
+          })()}
 
           {entry.checklist?.length ? (
             <div

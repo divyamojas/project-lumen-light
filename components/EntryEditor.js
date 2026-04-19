@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { JOURNAL_PROMPTS, JOURNAL_TEMPLATES, normalizeTag } from "../lib/journal.mjs";
-import { clearDraft, getDraft, saveDraft } from "../lib/storage";
+import { getExtraFields, getJournalType, getTemplates } from "../lib/journalTypes";
+import { clearDraft, getDraft, getDefaultJournalType, getEnabledJournalTypes, saveDraft, setDefaultJournalType } from "../lib/storage";
+import { THEMES } from "../lib/themes";
 
 const markdownActions = [
   { label: "H1", prefix: "# ", suffix: "", placeholder: "Heading" },
@@ -20,6 +22,62 @@ const parseTagsInput = (value) => {
     .filter(Boolean)
     .slice(0, 8);
 };
+
+export function TypeMetadataFields({ journalType, metadata, onChange }) {
+  const extraFields = getExtraFields(journalType);
+
+  if (!extraFields.length) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+        {getJournalType(journalType).label} details
+      </p>
+      {extraFields.map((field) => {
+        const value = metadata[field.key] ?? "";
+        const sharedStyle = {
+          border: "1px solid var(--surface-border)",
+          backgroundColor: "var(--surface)",
+          color: "var(--text-primary)",
+        };
+        if (field.type === "textarea") {
+          return (
+            <div key={field.key}>
+              <label className="mb-1 block text-xs" style={{ color: "var(--text-secondary)" }}>
+                {field.label}
+              </label>
+              <textarea
+                value={value}
+                onChange={(e) => onChange({ ...metadata, [field.key]: e.target.value })}
+                placeholder={field.placeholder}
+                rows={3}
+                className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
+                style={sharedStyle}
+              />
+            </div>
+          );
+        }
+        return (
+          <div key={field.key}>
+            <label className="mb-1 block text-xs" style={{ color: "var(--text-secondary)" }}>
+              {field.label}
+            </label>
+            <input
+              type={field.type === "number" ? "number" : "text"}
+              value={value}
+              onChange={(e) => onChange({ ...metadata, [field.key]: e.target.value })}
+              placeholder={field.placeholder}
+              className="w-full rounded-2xl px-4 py-3 text-sm outline-none"
+              style={sharedStyle}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function EntryEditor({
   isOpen,
@@ -43,12 +101,25 @@ export function EntryEditor({
   const [errors, setErrors] = useState({ title: "", body: "" });
   const [draftStatus, setDraftStatus] = useState("");
   const [restoredDraft, setRestoredDraft] = useState(null);
+  const [journalType, setJournalType] = useState("personal");
+  const [typeMetadata, setTypeMetadata] = useState({});
+  const [theme, setTheme] = useState("neutral");
   const textareaRef = useRef(null);
   const saveTimeoutRef = useRef(null);
   const loadedDraftRef = useRef(false);
 
+  const enabledTypes = useMemo(() => getEnabledJournalTypes(), []);
   const characterCount = `${title.length + body.length} chars`;
   const parsedTags = useMemo(() => parseTagsInput(tagsInput), [tagsInput]);
+
+  const typeTemplates = useMemo(() => {
+    const jt = getJournalType(journalType);
+    return [
+      { id: "blank", label: "Blank" },
+      ...JOURNAL_TEMPLATES.filter((t) => t.id !== "blank"),
+      ...jt.templates.map((t) => ({ ...t, id: `type-${t.id}` })),
+    ];
+  }, [journalType]);
 
   const applyValues = (values) => {
     setTitle(values?.title || "");
@@ -59,6 +130,9 @@ export function EntryEditor({
     setPinned(Boolean(values?.pinned));
     setSelectedTemplate(values?.templateId || "blank");
     setSelectedPrompt(values?.promptId || "");
+    setJournalType(values?.journal_type || getDefaultJournalType());
+    setTypeMetadata(values?.type_metadata || {});
+    setTheme(values?.theme || "neutral");
   };
 
   useEffect(() => {
@@ -86,6 +160,7 @@ export function EntryEditor({
     window.setTimeout(() => {
       textareaRef.current?.focus();
     }, 60);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId, initialValues, isOpen]);
 
   useEffect(() => {
@@ -120,6 +195,9 @@ export function EntryEditor({
         collection,
         favorite,
         pinned,
+        journal_type: journalType,
+        type_metadata: typeMetadata,
+        theme,
       });
       setDraftStatus("Draft saved locally.");
     }, 320);
@@ -127,7 +205,7 @@ export function EntryEditor({
     return () => {
       window.clearTimeout(saveTimeoutRef.current);
     };
-  }, [body, collection, draftId, favorite, isOpen, parsedTags, pinned, restoredDraft, title]);
+  }, [body, collection, draftId, favorite, isOpen, journalType, parsedTags, pinned, restoredDraft, theme, title, typeMetadata]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -179,6 +257,17 @@ export function EntryEditor({
   };
 
   const handleApplyTemplate = (templateId) => {
+    if (templateId.startsWith("type-")) {
+      const realId = templateId.slice(5);
+      const jt = getJournalType(journalType);
+      const template = jt.templates.find((t) => t.id === realId);
+      if (template) {
+        setSelectedTemplate(templateId);
+        if (!body.trim()) setBody(template.body);
+      }
+      return;
+    }
+
     const template = JOURNAL_TEMPLATES.find((item) => item.id === templateId);
 
     if (!template) {
@@ -202,6 +291,12 @@ export function EntryEditor({
       const spacer = currentValue.trim() ? "\n\n" : "";
       return `${currentValue}${spacer}${prompt}\n`;
     });
+  };
+
+  const handleJournalTypeChange = (nextType) => {
+    setJournalType(nextType);
+    setDefaultJournalType(nextType);
+    setTypeMetadata({});
   };
 
   const handleSave = async () => {
@@ -228,6 +323,9 @@ export function EntryEditor({
       templateId: selectedTemplate,
       promptId: selectedPrompt,
       relatedEntryIds: relatedEntries.map((entryItem) => entryItem.id),
+      journal_type: journalType,
+      type_metadata: typeMetadata,
+      theme,
     });
 
     if (!entry) {
@@ -243,6 +341,8 @@ export function EntryEditor({
     setCollection("");
     setFavorite(false);
     setPinned(false);
+    setTypeMetadata({});
+    setTheme("neutral");
   };
 
   if (!isOpen) {
@@ -287,6 +387,32 @@ export function EntryEditor({
             </div>
           </div>
         </div>
+
+        {/* Journal type picker */}
+        {enabledTypes.length > 1 ? (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {enabledTypes.map((typeId) => {
+              const jt = getJournalType(typeId);
+              const isActive = journalType === typeId;
+              return (
+                <button
+                  key={typeId}
+                  type="button"
+                  onClick={() => handleJournalTypeChange(typeId)}
+                  className="touch-target inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition"
+                  style={{
+                    backgroundColor: isActive ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                    color: isActive ? "var(--button-text)" : "var(--button-secondary-text)",
+                    border: isActive ? "none" : "1px solid var(--surface-border)",
+                  }}
+                >
+                  <span aria-hidden="true">{jt.icon}</span>
+                  {jt.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
         {restoredDraft ? (
           <div
@@ -401,7 +527,7 @@ export function EntryEditor({
                 color: "var(--text-primary)",
               }}
             >
-              {JOURNAL_TEMPLATES.map((template) => (
+              {typeTemplates.map((template) => (
                 <option key={template.id} value={template.id}>
                   Template: {template.label}
                 </option>
@@ -487,6 +613,45 @@ export function EntryEditor({
               }}
             />
             {errors.body ? <p className="mt-2 text-sm text-rose-300">{errors.body}</p> : null}
+          </div>
+
+          {/* Type-specific extra fields */}
+          <TypeMetadataFields
+            journalType={journalType}
+            metadata={typeMetadata}
+            onChange={setTypeMetadata}
+          />
+
+          {/* Mood picker */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+              Mood
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(THEMES).map(([key, themeData]) => {
+                const isActive = theme === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setTheme(key === theme ? "neutral" : key)}
+                    className="touch-target inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition"
+                    style={{
+                      backgroundColor: isActive ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                      color: isActive ? "var(--button-text)" : "var(--button-secondary-text)",
+                      border: isActive ? "none" : "1px solid var(--surface-border)",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-2 w-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: themeData.accent }}
+                    />
+                    {themeData.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {parsedTags.length ? (
