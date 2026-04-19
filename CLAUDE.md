@@ -157,7 +157,7 @@ User sets manually today. Phase 5 will auto-set via AWS Comprehend.
 - App Router pages that touch browser APIs must be client components
 
 ## Not Yet Wired
-- `lib/featureFlags.js` tier enforcement is not active — all features return `true`
+- `lib/featureFlags.js` is a shipped-vs-planned capability registry, not a monetization or entitlement system
 - S3 sync UI is present but `/sync/status` and `/sync/full` are Phase 2 backend work
 - `/legal/privacy` and `/legal/terms` backend endpoints are optional; fall back to static text
 - Natural-language retrieval and AI reflection generation are Phase 3–4 backend work
