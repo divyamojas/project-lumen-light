@@ -17,6 +17,65 @@ const sanitizeNextPath = (value) => {
   return typeof value === "string" && value.startsWith("/") ? value : "/app";
 };
 
+const AUTH_ERROR_MESSAGES = {
+  over_email_send_rate_limit: "Too many signup emails were requested. Please wait a few minutes and try again.",
+  email_rate_limit_exceeded: "Too many email attempts were made. Please wait a few minutes and try again.",
+  invalid_credentials: "The email or password is incorrect.",
+  email_not_confirmed: "Please confirm your email address before signing in.",
+  user_already_exists: "An account with this email already exists.",
+  user_already_registered: "An account with this email already exists.",
+  weak_password: "Choose a stronger password and try again.",
+};
+
+const normalizeErrorText = (value) => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeErrorText(item))
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  if (value && typeof value === "object") {
+    return (
+      normalizeErrorText(value.msg) ||
+      normalizeErrorText(value.message) ||
+      normalizeErrorText(value.detail) ||
+      JSON.stringify(value)
+    );
+  }
+
+  return "";
+};
+
+const resolveAuthErrorMessage = (authError) => {
+  const errorCode =
+    authError?.details?.error_code ||
+    authError?.details?.code ||
+    authError?.details?.detail?.error_code ||
+    authError?.details?.detail?.code ||
+    "";
+
+  if (typeof errorCode === "string" && AUTH_ERROR_MESSAGES[errorCode]) {
+    return AUTH_ERROR_MESSAGES[errorCode];
+  }
+
+  if (authError?.status === 429) {
+    return "Too many requests were made. Please wait a few minutes and try again.";
+  }
+
+  return (
+    normalizeErrorText(authError?.details?.message) ||
+    normalizeErrorText(authError?.details?.detail) ||
+    normalizeErrorText(authError?.details) ||
+    authError?.message ||
+    "Authentication failed."
+  );
+};
+
 export function AuthPage() {
   const auth = useAuth();
   const router = useRouter();
@@ -103,12 +162,7 @@ export function AuthPage() {
       await auth.resetPassword({ email });
       setNotice("If that account exists, a password reset message has been requested.");
     } catch (authError) {
-      setError(
-        authError?.details?.message ||
-          authError?.details?.detail ||
-          authError?.message ||
-          "Authentication failed."
-      );
+      setError(resolveAuthErrorMessage(authError));
       setApiError(buildErrorReport(authError, "Authentication failed."));
     }
   };

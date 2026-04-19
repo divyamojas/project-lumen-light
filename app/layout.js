@@ -2,6 +2,7 @@ import { Inter, Playfair_Display } from "next/font/google";
 import AppChrome from "../components/AppChrome";
 import AuthDock from "../components/AuthDock";
 import AuthProvider from "../components/AuthProvider";
+import ErrorBoundary from "../components/ErrorBoundary";
 import RouteGate from "../components/RouteGate";
 import "./globals.css";
 
@@ -41,12 +42,14 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} ${playfair.variable}`}>
       <body className="font-[family-name:var(--font-inter)] antialiased transition-colors duration-500">
-        <AuthProvider>
-          <RouteGate>
-            <AppChrome>{children}</AppChrome>
-            <AuthDock />
-          </RouteGate>
-        </AuthProvider>
+        <ErrorBoundary>
+          <AuthProvider>
+            <RouteGate>
+              <AppChrome>{children}</AppChrome>
+              <AuthDock />
+            </RouteGate>
+          </AuthProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

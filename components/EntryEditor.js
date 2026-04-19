@@ -365,18 +365,28 @@ export function EntryEditor({
                   color: "var(--text-primary)",
                 }}
               />
-              <input
-                type="text"
-                value={tagsInput}
-                onChange={(event) => setTagsInput(event.target.value)}
-                placeholder="Tags, comma separated"
-                className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
-                style={{
-                  border: "1px solid var(--surface-border)",
-                  backgroundColor: "var(--surface)",
-                  color: "var(--text-primary)",
-                }}
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={tagsInput}
+                  onChange={(event) => setTagsInput(event.target.value)}
+                  placeholder="Tags, comma separated"
+                  className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
+                  style={{
+                    border: `1px solid ${parsedTags.length >= 8 ? "var(--accent)" : "var(--surface-border)"}`,
+                    backgroundColor: "var(--surface)",
+                    color: "var(--text-primary)",
+                  }}
+                />
+                {parsedTags.length >= 8 && (
+                  <span
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    8 max
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

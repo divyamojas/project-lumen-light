@@ -42,10 +42,12 @@ Lumen is a Next.js 14 Progressive Web App journal for calm daily writing on desk
 
 ## How To Run With Docker
 
+This frontend is started by the root orchestrator repo, not by a local compose file in this directory.
+
 1. Install Docker Desktop or another runtime that supports `docker compose`.
-2. Open a terminal in this project directory.
+2. Open a terminal in the sibling `project-lumen/` repo.
 3. Start the development stack:
-   `docker compose up`
+   `./start.sh`
 4. Open `http://localhost:3000` for the app directly.
 5. Open `https://localhost` if you want to exercise the local HTTPS proxy.
 
@@ -55,19 +57,19 @@ Android Chrome usually needs a secure origin before install behavior becomes rel
 
 1. Find your Mac LAN IP:
    `ipconfig getifaddr en0`
-2. Start the stack with the IP bound into the proxy:
-   `LAN_HOST=YOUR_MAC_IP docker compose up`
+2. Start the stack from `project-lumen/` with the IP bound into the proxy:
+   `LAN_HOST=YOUR_MAC_IP ./start.sh`
 3. Visit `https://localhost` once on your Mac and trust the local certificate if prompted.
-4. Export Caddy’s local root certificate:
-   `docker compose exec proxy cat /data/caddy/pki/authorities/local/root.crt > lumen-local-root.crt`
+4. Export Caddy’s local root certificate from `project-lumen/`:
+   `docker compose exec proxy cat /data/caddy/pki/authorities/local/root.crt > project-lumen-light/lumen-local-root.crt`
 5. Install `lumen-local-root.crt` as a trusted certificate on Android.
 6. Open `https://YOUR_MAC_IP` on the phone.
 
 ### Notes
 
-- `docker compose up` starts both the app container and the local HTTPS proxy
+- `./start.sh` in `project-lumen/` starts both the app container and the local HTTPS proxy
 - Production-style PWA behavior should be validated with a production build, not `npm run dev`
-- A clean production check inside Docker is:
+- A clean production check inside Docker from `project-lumen/` is:
   `docker compose run --rm -e NODE_ENV=production app npm run build`
 - In production mode, the service worker is emitted to `public/sw.js`
 - Chrome may still show installation from the browser menu instead of an immediate popup

@@ -1,5 +1,10 @@
 https://localhost, https://{$LAN_HOST} {
 	tls internal
 	encode gzip zstd
+
+	handle_path /api/* {
+		reverse_proxy lumen-api:8000
+	}
+
 	reverse_proxy app:3000
 }

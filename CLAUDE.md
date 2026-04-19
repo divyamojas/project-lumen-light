@@ -37,7 +37,7 @@ notes, and out-of-scope items. Do not sync CLAUDE.md content into AGENTS.md.
 - `middleware.js` — cookie-based auth redirect layer for public vs protected routes
 - `public/manifest.json` — PWA manifest and shortcuts
 - `Dockerfile` — Node 20 Alpine development image
-- `docker-compose.yml` — app container plus local HTTPS proxy
+- Local Docker orchestration lives in the root `project-lumen/docker-compose.yml`
 - `Caddyfile` — HTTPS reverse proxy config for localhost and LAN installs
 - `tests/journal.test.mjs` — Node tests for shared journal helpers
 
@@ -87,6 +87,6 @@ notes, and out-of-scope items. Do not sync CLAUDE.md content into AGENTS.md.
 - `app/app/page.js` moved one directory deeper, so relative imports from that file differ from other app routes
 - `next-pwa` does not emit a service worker during `npm run dev`
 - For trustworthy PWA verification, run a production build with `NODE_ENV=production`
-- Docker compose sets `NODE_ENV=development` for the dev container — not suitable for production verification
+- The root `project-lumen/docker-compose.yml` sets `NODE_ENV=development` for the dev container — not suitable for production verification
 - Android install behavior depends on secure-origin trust and Chrome heuristics
 - Annotate any temporary console debugging with `// TODO: remove`

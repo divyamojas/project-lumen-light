@@ -5,4 +5,8 @@ const withPWA = require("next-pwa")({
 
 module.exports = withPWA({
   reactStrictMode: true,
+  async rewrites() {
+    const backend = process.env.BACKEND_INTERNAL_URL || "http://lumen-api:8000";
+    return [{ source: "/api/:path*", destination: `${backend}/:path*` }];
+  },
 });
