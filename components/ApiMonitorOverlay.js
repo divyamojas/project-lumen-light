@@ -39,10 +39,9 @@ export function ApiMonitorOverlay() {
   const [isClosed, setIsClosed] = useState(false);
   const [memoryNotice, setMemoryNotice] = useState("");
   const [snapshot, setSnapshot] = useState(() => getApiMonitorSnapshot());
-  const { panelRef, position, isDragging, handleDragStart } = useFloatingPanel({
-    storageKey: "lumen_api_monitor_position",
-    fallbackWidth: 420,
-    fallbackHeight: isClosed ? 52 : isOpen && !isMinimized ? 420 : 86,
+  const { panelRef, position, isDragging, handleDragStart, checkWasDragged } = useFloatingPanel({
+    fallbackWidth: isClosed ? 44 : 420,
+    fallbackHeight: isClosed ? 44 : isOpen && !isMinimized ? 420 : 86,
     getDefaultPosition: ({ viewportHeight }) => ({
       x: 16,
       y: Math.max(16, viewportHeight - 120),
@@ -127,15 +126,14 @@ export function ApiMonitorOverlay() {
 
   const handleToggleMinimize = () => {
     setIsClosed(false);
-    setIsMinimized((current) => {
-      const nextValue = !current;
-
-      if (nextValue) {
-        setIsOpen(false);
-      }
-
-      return nextValue;
-    });
+    const isContentVisible = isOpen && !isMinimized;
+    if (isContentVisible) {
+      setIsMinimized(true);
+      setIsOpen(false);
+    } else {
+      setIsMinimized(false);
+      setIsOpen(true);
+    }
   };
 
   const handleOpenPanel = () => {
@@ -153,7 +151,7 @@ export function ApiMonitorOverlay() {
   return (
     <div
       ref={panelRef}
-      className="fixed z-[92] w-[min(26rem,calc(100vw-2rem))]"
+      className={`fixed z-[92] ${isClosed ? "w-11" : "w-[min(26rem,calc(100vw-2rem))]"}`}
       style={
         position
           ? {
@@ -169,19 +167,20 @@ export function ApiMonitorOverlay() {
       {isClosed ? (
         <button
           type="button"
-          onClick={handleOpenPanel}
-          className="w-full rounded-full border px-4 py-3 text-left shadow-[0_24px_50px_rgba(14,18,26,0.22)] backdrop-blur-xl"
+          onPointerDown={handleDragStart}
+          onClick={() => { if (checkWasDragged()) return; handleOpenPanel(); }}
+          className="flex h-11 w-11 items-center justify-center rounded-full border shadow-[0_8px_24px_rgba(14,18,26,0.22)] backdrop-blur-xl"
           style={{
             backgroundColor: "color-mix(in srgb, var(--surface-strong) 92%, transparent)",
             borderColor: "var(--surface-border)",
+            cursor: isDragging ? "grabbing" : "grab",
+            touchAction: "none",
           }}
         >
-          <span className="block text-[11px] uppercase tracking-[0.22em]" style={{ color: "var(--text-muted)" }}>
-            API Monitor
-          </span>
-          <span className="mt-1 block text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-            Reopen logs monitor
-          </span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <polyline points="1,10 4,6 7,8 10,3 13,5 15,2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            <circle cx="15" cy="2" r="1.5" fill="currentColor" />
+          </svg>
         </button>
       ) : (
       <div
@@ -224,7 +223,7 @@ export function ApiMonitorOverlay() {
                 border: "1px solid var(--surface-border)",
               }}
             >
-              {isMinimized ? "Expand" : "Minimize"}
+              {isOpen && !isMinimized ? "Minimize" : "Expand"}
             </button>
             <button
               type="button"

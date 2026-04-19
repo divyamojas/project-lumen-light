@@ -18,31 +18,7 @@ const clampPosition = (position, panelWidth, panelHeight) => {
   };
 };
 
-const readSavedPosition = (storageKey) => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(storageKey));
-
-    if (
-      saved &&
-      typeof saved === "object" &&
-      typeof saved.x === "number" &&
-      typeof saved.y === "number"
-    ) {
-      return saved;
-    }
-  } catch (_error) {
-    return null;
-  }
-
-  return null;
-};
-
 export const useFloatingPanel = ({
-  storageKey,
   fallbackWidth = 360,
   fallbackHeight = 220,
   getDefaultPosition,
@@ -57,6 +33,7 @@ export const useFloatingPanel = ({
     offsetX: 0,
     offsetY: 0,
   });
+  const dragMovedRef = useRef(false);
   const [position, setPosition] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -86,7 +63,6 @@ export const useFloatingPanel = ({
       return;
     }
 
-    const savedPosition = readSavedPosition(storageKey);
     const defaultPosition = getDefaultPositionRef.current({
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
@@ -95,16 +71,8 @@ export const useFloatingPanel = ({
     });
 
     hasInitializedRef.current = true;
-    setPosition(clampPosition(savedPosition || defaultPosition, fallbackWidth, fallbackHeight));
-  }, [fallbackHeight, fallbackWidth, storageKey]);
-
-  useEffect(() => {
-    if (!position || typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(storageKey, JSON.stringify(position));
-  }, [position, storageKey]);
+    setPosition(clampPosition(defaultPosition, fallbackWidth, fallbackHeight));
+  }, [fallbackHeight, fallbackWidth]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -115,6 +83,8 @@ export const useFloatingPanel = ({
       if (dragStateRef.current.pointerId === null) {
         return;
       }
+
+      dragMovedRef.current = true;
 
       const panelRect = panelRef.current?.getBoundingClientRect();
       const panelWidth = panelRect?.width || fallbackWidth;
@@ -202,6 +172,7 @@ export const useFloatingPanel = ({
       return;
     }
 
+    dragMovedRef.current = false;
     dragStateRef.current = {
       pointerId: event.pointerId,
       offsetX: event.clientX - panelRect.left,
@@ -212,11 +183,18 @@ export const useFloatingPanel = ({
     event.preventDefault();
   };
 
+  const checkWasDragged = () => {
+    const result = dragMovedRef.current;
+    dragMovedRef.current = false;
+    return result;
+  };
+
   return {
     panelRef,
     position,
     isDragging,
     handleDragStart,
+    checkWasDragged,
   };
 };
 

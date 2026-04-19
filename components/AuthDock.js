@@ -31,10 +31,9 @@ export function AuthDock() {
   const [error, setError] = useState("");
   const [apiError, setApiError] = useState(null);
   const [memoryNotice, setMemoryNotice] = useState("");
-  const { panelRef, position, isDragging, handleDragStart } = useFloatingPanel({
-    storageKey: "lumen_access_dock_position",
-    fallbackWidth: 380,
-    fallbackHeight: isClosed ? 52 : isExpanded && !isMinimized ? 260 : 88,
+  const { panelRef, position, isDragging, handleDragStart, checkWasDragged } = useFloatingPanel({
+    fallbackWidth: isClosed ? 44 : 380,
+    fallbackHeight: isClosed ? 44 : isExpanded && !isMinimized ? 260 : 88,
     getDefaultPosition: ({ viewportWidth, viewportHeight, panelWidth }) => ({
       x: Math.max(16, viewportWidth - panelWidth - 16),
       y: Math.max(16, viewportHeight - 120),
@@ -118,15 +117,14 @@ export function AuthDock() {
 
   const handleToggleMinimize = () => {
     setIsClosed(false);
-    setIsMinimized((current) => {
-      const nextValue = !current;
-
-      if (nextValue) {
-        setIsExpanded(false);
-      }
-
-      return nextValue;
-    });
+    const isContentVisible = isExpanded && !isMinimized;
+    if (isContentVisible) {
+      setIsMinimized(true);
+      setIsExpanded(false);
+    } else {
+      setIsMinimized(false);
+      setIsExpanded(true);
+    }
   };
 
   const handleOpenPanel = () => {
@@ -144,7 +142,7 @@ export function AuthDock() {
   return (
     <div
       ref={panelRef}
-      className="fixed z-[80] w-[min(24rem,calc(100vw-2rem))]"
+      className={`fixed z-[80] ${isClosed ? "w-11" : "w-[min(24rem,calc(100vw-2rem))]"}`}
       style={
         position
           ? {
@@ -160,19 +158,20 @@ export function AuthDock() {
       {isClosed ? (
         <button
           type="button"
-          onClick={handleOpenPanel}
-          className="w-full rounded-full border px-4 py-3 text-left shadow-[0_24px_50px_rgba(14,18,26,0.18)] backdrop-blur-xl"
+          onPointerDown={handleDragStart}
+          onClick={() => { if (checkWasDragged()) return; handleOpenPanel(); }}
+          className="flex h-11 w-11 items-center justify-center rounded-full border shadow-[0_8px_24px_rgba(14,18,26,0.22)] backdrop-blur-xl"
           style={{
             backgroundColor: "color-mix(in srgb, var(--surface-strong) 88%, transparent)",
             borderColor: "var(--surface-border)",
+            cursor: isDragging ? "grabbing" : "grab",
+            touchAction: "none",
           }}
         >
-          <span className="block text-[11px] uppercase tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
-            Access
-          </span>
-          <span className="mt-1 block text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-            Reopen access dock
-          </span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M2.5 14.5c0-3.038 2.462-5.5 5.5-5.5s5.5 2.462 5.5 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
         </button>
       ) : (
       <div
@@ -215,7 +214,7 @@ export function AuthDock() {
                 border: "1px solid var(--surface-border)",
               }}
             >
-              {isMinimized ? "Expand" : "Minimize"}
+              {isExpanded && !isMinimized ? "Minimize" : "Expand"}
             </button>
             <button
               type="button"
