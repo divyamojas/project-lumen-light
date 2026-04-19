@@ -145,7 +145,7 @@ export function AdminPanel() {
   const [entries, setEntries] = useState({ data: [], total: 0, page: 1, page_size: 20, has_next: false });
   const [schema, setSchema] = useState(null);
   const [migrations, setMigrations] = useState([]);
-  const [sqlQuery, setSqlQuery] = useState("select * from users limit 10;");
+  const [sqlQuery, setSqlQuery] = useState("select * from public.user_roles limit 10;");
   const [sqlResult, setSqlResult] = useState(null);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedUserDetail, setSelectedUserDetail] = useState(null);
@@ -940,7 +940,7 @@ export function AdminPanel() {
                       backgroundColor: "color-mix(in srgb, var(--surface) 88%, transparent)",
                       color: "var(--text-primary)",
                     }}
-                    placeholder="select * from users limit 10;"
+                    placeholder="select * from public.user_roles limit 10;"
                   />
                   <div className="mt-4 flex justify-end">
                     <button

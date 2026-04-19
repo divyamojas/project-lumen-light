@@ -1,11 +1,13 @@
 "use client";
 
 import { Component } from "react";
+import ApiErrorSnackbar from "./ApiErrorSnackbar";
+import { buildFrontendErrorReport } from "../lib/storage";
 
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { error: null };
+    this.state = { error: null, errorReport: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -14,14 +16,17 @@ class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error("[ErrorBoundary]", error, info.componentStack);
+    this.setState({
+      errorReport: buildFrontendErrorReport(error, info?.componentStack || ""),
+    });
   }
 
   handleReset() {
-    this.setState({ error: null });
+    this.setState({ error: null, errorReport: null });
   }
 
   render() {
-    const { error } = this.state;
+    const { error, errorReport } = this.state;
     const { children } = this.props;
 
     if (!error) {
@@ -45,7 +50,7 @@ class ErrorBoundary extends Component {
       >
         <p style={{ fontSize: "1.1rem", fontWeight: 600 }}>Something went wrong</p>
         <p style={{ fontSize: "0.875rem", opacity: 0.6, maxWidth: "36ch" }}>
-          {error?.message || "An unexpected error occurred."}
+          {error?.message || "An unexpected frontend error occurred."}
         </p>
         <button
           onClick={() => this.handleReset()}
@@ -76,6 +81,11 @@ class ErrorBoundary extends Component {
         >
           Go home
         </button>
+        <ApiErrorSnackbar
+          error={errorReport}
+          defaultOpen
+          onClose={() => this.setState({ errorReport: null })}
+        />
       </div>
     );
   }

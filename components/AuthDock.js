@@ -20,6 +20,7 @@ export function AuthDock() {
     session,
     isLoading,
     isSigningIn,
+    isAdmin,
     signIn,
     signOut,
   } = useAuth();
@@ -115,16 +116,18 @@ export function AuthDock() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <Link
-                    href="/admin"
-                    className="rounded-full px-4 py-2 text-sm font-semibold"
-                    style={{
-                      backgroundColor: "var(--button-bg)",
-                      color: "var(--button-text)",
-                    }}
-                  >
-                    Open Admin
-                  </Link>
+                  {isAdmin ? (
+                    <Link
+                      href="/admin"
+                      className="rounded-full px-4 py-2 text-sm font-semibold"
+                      style={{
+                        backgroundColor: "var(--button-bg)",
+                        color: "var(--button-text)",
+                      }}
+                    >
+                      Open Admin
+                    </Link>
+                  ) : null}
                   <button
                     type="button"
                     onClick={signOut}

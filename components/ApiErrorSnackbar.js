@@ -1,9 +1,31 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-export function ApiErrorSnackbar({ error, onClose }) {
-  const [isOpen, setIsOpen] = useState(false);
+const buildCopyText = (error, statusLabel) => {
+  return [
+    `${error?.kind || "API Error"}`,
+    "",
+    `Title: ${error?.title || error?.message || "Unknown error"}`,
+    `Message: ${error?.message || "Unknown error"}`,
+    `Status: ${statusLabel}`,
+    `Method: ${error?.method || "unknown"}`,
+    `URL: ${error?.url || "unknown"}`,
+    "",
+    error?.stack || error?.message || "",
+  ].join("\n");
+};
+
+export function ApiErrorSnackbar({ error, onClose, defaultOpen = false }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [copyNotice, setCopyNotice] = useState("");
+
+  useEffect(() => {
+    if (error) {
+      setIsOpen(defaultOpen);
+      setCopyNotice("");
+    }
+  }, [defaultOpen, error]);
 
   const statusLabel = useMemo(() => {
     if (!error?.status) {
@@ -13,9 +35,22 @@ export function ApiErrorSnackbar({ error, onClose }) {
     return `HTTP ${error.status}`;
   }, [error?.status]);
 
+  const typeLabel = error?.kind || "API Error";
+
   if (!error) {
     return null;
   }
+
+  const handleCopy = async () => {
+    const copyText = buildCopyText(error, statusLabel);
+
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setCopyNotice("Copied");
+    } catch (_error) {
+      setCopyNotice("Copy failed");
+    }
+  };
 
   return (
     <>
@@ -31,7 +66,7 @@ export function ApiErrorSnackbar({ error, onClose }) {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[11px] uppercase tracking-[0.22em]" style={{ color: "var(--button-danger-bg)" }}>
-              API Error
+              {typeLabel}
             </p>
             <p className="mt-1 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
               {error.title || error.message}
@@ -62,7 +97,7 @@ export function ApiErrorSnackbar({ error, onClose }) {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.22em]" style={{ color: "var(--button-danger-bg)" }}>
-                  API Error
+                  {typeLabel}
                 </p>
                 <h2 className="mt-2 font-[family-name:var(--font-playfair)] text-3xl" style={{ color: "var(--text-primary)" }}>
                   {error.title || "Request failed"}
@@ -72,6 +107,18 @@ export function ApiErrorSnackbar({ error, onClose }) {
                 </p>
               </div>
               <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="rounded-full px-4 py-2 text-sm font-semibold"
+                  style={{
+                    backgroundColor: "var(--button-secondary-bg)",
+                    color: "var(--button-secondary-text)",
+                    border: "1px solid var(--surface-border)",
+                  }}
+                >
+                  {copyNotice || "Copy"}
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
