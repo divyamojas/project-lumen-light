@@ -1,17 +1,18 @@
 # Lumen — Frontend
 
-> **Your journal. Your AWS. Your AI.**
-> A private, calm journal suite where your data lives on your own cloud —
+> **Your journal. Private backup. Future AI.**
+> A private, calm journal suite where your data stays under your Lumen deployment —
 > and where AI works *on your data*, not on someone else's servers.
 
 Lumen is a journaling suite for six use cases: personal reflection, science
 and research logging, travel, fitness, work, and creative writing. Each type
-gets purpose-built fields and prompts. All entries sync to your own AWS S3
-bucket. An AI layer (in progress) will let you query your journal in natural
-language using Bedrock — without your data ever leaving your infrastructure.
+gets purpose-built fields and prompts. Entries can be backed up to an
+AWS S3 bucket configured for the Lumen deployment. An AI layer (in progress)
+will let you query your journal in natural language using Bedrock.
 
-**Status:** Phase 1 (core journaling) complete. Phase 2 (S3 sync) in progress.
-Phases 3–5 (Bedrock, NL query, sentiment) on the roadmap.
+**Status:** Phase 1 (core journaling) is usable but still being hardened.
+Phase 2 (deployment-managed S3 backup) is partially implemented and still in progress.
+Phases 3–5 (Bedrock, NL query, sentiment) remain on the roadmap.
 
 ---
 
@@ -52,6 +53,8 @@ Phases 3–5 (Bedrock, NL query, sentiment) on the roadmap.
 - `/app` : authenticated journal dashboard
 - `/entry/[id]` : authenticated entry detail route
 - `/admin` : authenticated admin route
+- `/landing` : public marketing page
+- `/onboarding` : authenticated first-run journal-type setup
 
 ## How To Run With Docker
 
@@ -149,11 +152,11 @@ Each entry includes the journal fields below plus organization metadata used thr
 - Never commit secrets such as `.env` or `.env.local`
 - Admin access should never be exposed through public routing without authentication
 
-## Scaffolded But Not Yet Wired
+## Not Fully Landed Yet
 
-- `entry.theme` still defaults to `"neutral"`
-- `THEMES` drives rendering but no sentiment inference runs at runtime
+- Automatic S3 backup reporting depends on backend configuration and shows deployment-level status, not per-device ownership
 - Natural-language retrieval and AI reflection generation are not runtime features yet
+- Sentiment inference is not wired; mood is still selected manually in the editor
 
 ## Planned Phases
 

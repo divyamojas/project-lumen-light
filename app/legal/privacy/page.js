@@ -9,12 +9,12 @@ const FALLBACK = `# Privacy Policy
 
 **Last updated: April 2026**
 
-Lumen is a private journal suite. Your entries are stored in your own AWS cloud infrastructure.
+Lumen is a private journal suite. Your entries are stored in the backing services configured for your Lumen deployment.
 
 ## What we collect
 
 - Your email address, used for authentication only.
-- Journal entries you write, stored in your AWS S3 bucket and database.
+- Journal entries you write, stored in the database and optionally backed up to the AWS S3 bucket configured for this deployment.
 
 ## What we don't do
 

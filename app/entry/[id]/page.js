@@ -267,6 +267,10 @@ export default function EntryPage({ params }) {
             pinned: entry.pinned,
             templateId: entry.templateId,
             promptId: entry.promptId,
+            relatedEntryIds: entry.relatedEntryIds,
+            journal_type: entry.journal_type,
+            type_metadata: entry.type_metadata,
+            theme: entry.theme,
           });
           setEditorMode("edit");
           setIsEditorOpen(true);

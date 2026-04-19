@@ -40,8 +40,9 @@ export function OnboardingPage() {
   };
 
   const handleStart = async () => {
+    const defaultJournalType = selected[0];
     setEnabledJournalTypes(selected);
-    setDefaultJournalType(selected[0]);
+    setDefaultJournalType(defaultJournalType);
     if (typeof window !== "undefined") {
       localStorage.setItem(ONBOARDING_KEY, "1");
       document.cookie = `lumen_onboarding=1; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
@@ -49,7 +50,10 @@ export function OnboardingPage() {
     try {
       await requestJson(`${getApiBase()}/users/me/preferences`, {
         method: "PATCH",
-        body: JSON.stringify({ enabled_journal_types: selected }),
+        body: JSON.stringify({
+          enabled_journal_types: selected,
+          default_journal_type: defaultJournalType,
+        }),
       });
     } catch (_e) {
       // Non-fatal — localStorage is the fallback

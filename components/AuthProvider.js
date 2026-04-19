@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   beginGoogleSignIn,
   requestPasswordReset,
@@ -11,11 +11,13 @@ import {
 } from "../lib/auth";
 
 const AuthContext = createContext(null);
+const SESSION_REFRESH_DEBOUNCE_MS = 60_000;
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const lastRefreshAtRef = useRef(0);
 
   const refreshSession = async () => {
     setIsLoading(true);
@@ -23,6 +25,7 @@ export function AuthProvider({ children }) {
     try {
       const nextSession = await resolveCurrentSession();
       setSession(nextSession);
+      lastRefreshAtRef.current = Date.now();
       return nextSession;
     } finally {
       setIsLoading(false);
@@ -32,6 +35,38 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     refreshSession();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const refreshIfStale = () => {
+      if (!session?.token || isSigningIn || isLoading) {
+        return;
+      }
+
+      if (Date.now() - lastRefreshAtRef.current < SESSION_REFRESH_DEBOUNCE_MS) {
+        return;
+      }
+
+      refreshSession();
+    };
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshIfStale();
+      }
+    };
+
+    window.addEventListener("focus", refreshIfStale);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+
+    return () => {
+      window.removeEventListener("focus", refreshIfStale);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
+  }, [isLoading, isSigningIn, session?.token]);
 
   const signIn = async (redirectPath = "/admin") => {
     setIsSigningIn(true);

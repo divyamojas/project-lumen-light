@@ -575,13 +575,15 @@ export function HomePage() {
     try {
       const result = await requestJson(`${getApiBase()}/sync/full`, { method: "POST" });
       setToast(
-        result?.scope === "all-users"
-          ? "Sync complete. All entries pushed to S3."
-          : "Sync complete. Your entries were pushed to S3."
+        result?.failed
+          ? `Backup finished with ${result.failed} failure${result.failed === 1 ? "" : "s"}.`
+          : result?.scope === "all-users"
+            ? "Backup complete. All entries were pushed to S3."
+            : "Backup complete. Your entries were pushed to S3."
       );
       await loadSyncStatus();
     } catch {
-      setToast("Sync failed. Check your AWS configuration.");
+      setToast("Backup failed. Check your deployment S3 configuration.");
     } finally {
       setIsSyncing(false);
     }
@@ -1410,7 +1412,7 @@ export function HomePage() {
               </div>
             </div>
 
-            {/* AWS Sync section */}
+            {/* S3 Backup section */}
             <div
               className="pointer-events-auto mt-3 rounded-[28px] border px-5 py-5"
               style={{
@@ -1419,7 +1421,7 @@ export function HomePage() {
               }}
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>AWS Sync</p>
+                <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>S3 Backup</p>
                 <button
                   type="button"
                   onClick={loadSyncStatus}
@@ -1431,17 +1433,42 @@ export function HomePage() {
               </div>
               {syncStatus === null ? (
                 <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  S3 sync keeps a copy of every entry in your own AWS S3 bucket. Click "Check status" to see if it is configured.
+                  S3 backup keeps a copy of every entry in the AWS bucket configured for this Lumen deployment. Click "Check status" to see whether that backup target is available.
                 </p>
               ) : syncStatus.enabled ? (
                 <div className="mt-3 space-y-2">
                   <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                    Sync enabled · Bucket: <span style={{ color: "var(--text-primary)" }}>{syncStatus.bucket || "—"}</span>
+                    Backup enabled · Bucket: <span style={{ color: "var(--text-primary)" }}>{syncStatus.bucket || "—"}</span>
                     {syncStatus.region ? ` · ${syncStatus.region}` : ""}
                   </p>
                   <p className="text-xs" style={{ color: syncStatus.reachable ? "var(--text-muted)" : "#F28A8A" }}>
-                    {syncStatus.reachable ? "S3 reachable" : "S3 unreachable — check IAM permissions"}
+                    {syncStatus.reachable ? "S3 reachable" : "S3 unreachable — check deployment credentials or IAM permissions"}
                   </p>
+                  {syncStatus.last_attempt ? (
+                    <div className="rounded-2xl px-3 py-2" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        Last backup attempt: {new Date(syncStatus.last_attempt.created_at).toLocaleString()}
+                      </p>
+                      <p
+                        className="mt-1 text-sm"
+                        style={{ color: syncStatus.last_attempt.status === "success" ? "var(--text-secondary)" : "#F28A8A" }}
+                      >
+                        {syncStatus.last_attempt.status === "success"
+                          ? `Succeeded via ${syncStatus.last_attempt.scope === "full_sync" ? "full backup" : "automatic save"}`
+                          : `Failed via ${syncStatus.last_attempt.scope === "full_sync" ? "full backup" : "automatic save"}`}
+                        {syncStatus.last_attempt.entry_id ? ` · Entry ${syncStatus.last_attempt.entry_id}` : ""}
+                      </p>
+                      {syncStatus.last_attempt.error ? (
+                        <p className="mt-1 text-xs" style={{ color: "#F28A8A" }}>
+                          {syncStatus.last_attempt.error}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      No backup attempt has been recorded for this account yet.
+                    </p>
+                  )}
                   {auth?.session?.user?.role === "admin" || auth?.session?.user?.role === "superuser" ? (
                     <button
                       type="button"
@@ -1450,17 +1477,17 @@ export function HomePage() {
                       className="rounded-full px-4 py-2 text-sm font-semibold transition hover:brightness-110 disabled:opacity-50"
                       style={{ backgroundColor: "var(--button-bg)", color: "var(--button-text)" }}
                     >
-                      {isSyncing ? "Syncing…" : "Sync all entries now"}
+                      {isSyncing ? "Syncing…" : "Run full backup now"}
                     </button>
                   ) : (
                     <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      Your entries sync automatically on every save.
+                      Automatic backup runs after each save when deployment-managed S3 backup is enabled.
                     </p>
                   )}
                 </div>
               ) : (
                 <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  S3 sync is not configured.
+                  Deployment-managed S3 backup is not configured.
                 </p>
               )}
             </div>

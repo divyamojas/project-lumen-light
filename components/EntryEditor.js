@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { JOURNAL_PROMPTS, JOURNAL_TEMPLATES, normalizeTag } from "../lib/journal.mjs";
+import {
+  JOURNAL_PROMPTS,
+  JOURNAL_TEMPLATES,
+  normalizeTag,
+  resolveEntryEditorRelatedIds,
+} from "../lib/journal.mjs";
 import { getExtraFields, getJournalType, getTemplates } from "../lib/journalTypes";
 import { clearDraft, getDraft, getDefaultJournalType, getEnabledJournalTypes, saveDraft, setDefaultJournalType } from "../lib/storage";
 import { THEMES } from "../lib/themes";
@@ -111,6 +116,9 @@ export function EntryEditor({
   const enabledTypes = useMemo(() => getEnabledJournalTypes(), []);
   const characterCount = `${title.length + body.length} chars`;
   const parsedTags = useMemo(() => parseTagsInput(tagsInput), [tagsInput]);
+  const resolvedRelatedEntryIds = useMemo(() => {
+    return resolveEntryEditorRelatedIds(initialValues?.relatedEntryIds, relatedEntries);
+  }, [initialValues?.relatedEntryIds, relatedEntries]);
 
   const typeTemplates = useMemo(() => {
     const jt = getJournalType(journalType);
@@ -195,6 +203,9 @@ export function EntryEditor({
         collection,
         favorite,
         pinned,
+        templateId: selectedTemplate,
+        promptId: selectedPrompt,
+        relatedEntryIds: resolvedRelatedEntryIds,
         journal_type: journalType,
         type_metadata: typeMetadata,
         theme,
@@ -205,7 +216,23 @@ export function EntryEditor({
     return () => {
       window.clearTimeout(saveTimeoutRef.current);
     };
-  }, [body, collection, draftId, favorite, isOpen, journalType, parsedTags, pinned, restoredDraft, theme, title, typeMetadata]);
+  }, [
+    body,
+    collection,
+    draftId,
+    favorite,
+    isOpen,
+    journalType,
+    parsedTags,
+    pinned,
+    resolvedRelatedEntryIds,
+    restoredDraft,
+    selectedPrompt,
+    selectedTemplate,
+    theme,
+    title,
+    typeMetadata,
+  ]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -322,7 +349,7 @@ export function EntryEditor({
       pinned,
       templateId: selectedTemplate,
       promptId: selectedPrompt,
-      relatedEntryIds: relatedEntries.map((entryItem) => entryItem.id),
+      relatedEntryIds: resolvedRelatedEntryIds,
       journal_type: journalType,
       type_metadata: typeMetadata,
       theme,

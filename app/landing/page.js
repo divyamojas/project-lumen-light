@@ -4,12 +4,12 @@ import { JOURNAL_TYPE_LIST } from "../../lib/journalTypes";
 export const metadata = {
   title: "Lumen — Private journal suite",
   description:
-    "Lumen is a private, AI-ready journal suite. Write personal reflections, lab notes, travel logs, fitness records, and more — on your own AWS cloud.",
+    "Lumen is a private, AI-ready journal suite. Write personal reflections, lab notes, travel logs, fitness records, and more — with optional S3 backup configured for your Lumen deployment.",
 };
 
 const ROADMAP = [
   { phase: 1, label: "Phase 1", title: "Write & reflect", description: "Full journal suite — 6 types, mood tracking, calendar, timeline, prompts.", status: "now" },
-  { phase: 2, label: "Phase 2", title: "S3 sync", description: "Every entry backed up to your own AWS S3 bucket.", status: "coming" },
+  { phase: 2, label: "Phase 2", title: "S3 sync", description: "Every entry backed up to the AWS S3 bucket configured for this Lumen deployment.", status: "coming" },
   { phase: 3, label: "Phase 3", title: "Search & query", description: "Natural-language search across all your entries with AWS OpenSearch.", status: "coming" },
   { phase: 4, label: "Phase 4", title: "AI reflection", description: "AWS Bedrock generates weekly summaries and prompts based on your own writing.", status: "coming" },
   { phase: 5, label: "Phase 5", title: "Sentiment & mood", description: "AWS Comprehend auto-tags entries with mood and theme patterns over time.", status: "coming" },
@@ -98,8 +98,8 @@ export function LandingPage() {
           }}
         >
           Your journal.{" "}
-          <span style={{ color: "#7BC0FF" }}>Your AWS.</span>{" "}
-          Your AI.
+          <span style={{ color: "#7BC0FF" }}>Private backup.</span>{" "}
+          Future AI.
         </h1>
         <p
           style={{
@@ -110,7 +110,7 @@ export function LandingPage() {
             margin: "0 auto 2.5rem",
           }}
         >
-          A calm, private journal suite that keeps your data on your own cloud — and will eventually let you query it with AI.
+          A calm, private journal suite with optional deployment-managed S3 backup, and a future AI layer built around your own journal history.
         </p>
         <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
           <Link

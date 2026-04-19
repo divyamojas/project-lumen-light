@@ -6,6 +6,7 @@ import {
   filterEntries,
   normalizeDraft,
   prepareImportPreview,
+  resolveEntryEditorRelatedIds,
   sortEntries,
 } from "../lib/journal.mjs";
 
@@ -62,7 +63,60 @@ test("normalizeDraft trims and sanitizes draft metadata", () => {
     collection: "Personal",
     favorite: true,
     pinned: false,
+    templateId: "",
+    promptId: "",
+    relatedEntryIds: [],
+    journal_type: "personal",
+    type_metadata: {},
+    theme: "neutral",
   });
+});
+
+test("normalizeDraft preserves editor-only metadata used during restore", () => {
+  const draft = normalizeDraft({
+    title: "Typed draft",
+    body: "Body",
+    templateId: "type-experiment",
+    promptId: "What changed?",
+    relatedEntryIds: ["entry-1", "entry-2", null],
+    journal_type: "science",
+    type_metadata: { hypothesis: "Light increases growth" },
+    theme: "reflective",
+  });
+
+  assert.deepEqual(draft, {
+    title: "Typed draft",
+    body: "Body",
+    tags: [],
+    collection: "",
+    favorite: false,
+    pinned: false,
+    templateId: "type-experiment",
+    promptId: "What changed?",
+    relatedEntryIds: ["entry-1", "entry-2"],
+    journal_type: "science",
+    type_metadata: { hypothesis: "Light increases growth" },
+    theme: "reflective",
+  });
+});
+
+test("resolveEntryEditorRelatedIds prefers explicit draft values over derived entries", () => {
+  const relatedIds = resolveEntryEditorRelatedIds(
+    ["entry-2", "entry-3"],
+    [{ id: "entry-1" }]
+  );
+
+  assert.deepEqual(relatedIds, ["entry-2", "entry-3"]);
+});
+
+test("resolveEntryEditorRelatedIds falls back to related entry objects", () => {
+  const relatedIds = resolveEntryEditorRelatedIds([], [
+    { id: "entry-1" },
+    { id: "entry-2" },
+    {},
+  ]);
+
+  assert.deepEqual(relatedIds, ["entry-1", "entry-2"]);
 });
 
 test("filterEntries combines query, tags, collections, and favorites", () => {
