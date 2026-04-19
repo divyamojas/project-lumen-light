@@ -25,6 +25,7 @@ Keep it short: project summary, strict rules, file responsibilities, routing not
 - `lib/storage.js` — persistence boundary: IndexedDB entries, legacy migration, drafts, privacy settings, import/export, auth session persistence, shared request helpers
 - `lib/auth.js` — backend auth helpers for login, signup, reset, Google start, callback completion, logout, and admin identity resolution
 - `lib/admin.js` — backend admin API client helpers
+- `lib/featureFlags.js` — feature flag scaffold for future monetization tiers (free/pro/self); all flags currently return true; gate features with `hasFeature('feature_name')`
 - `middleware.js` — cookie-based auth redirect layer for public vs protected routes
 - `Dockerfile` — Node 20 Alpine development image
 - `Caddyfile` — local HTTPS reverse proxy config

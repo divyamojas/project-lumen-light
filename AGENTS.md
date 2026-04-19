@@ -28,6 +28,7 @@ Mobile-first and installable.
 - `lib/storage.js` → IndexedDB, migration, drafts, privacy, import/export, auth session persistence, shared request helpers
 - `lib/auth.js` → backend auth helpers, callback handling, session resolution, admin identity resolution
 - `lib/admin.js` → backend admin API helpers
+- `lib/featureFlags.js` → feature flag scaffold; `hasFeature(name)` gates features by tier (free/pro/self); all return true for now
 - `middleware.js` → server-side auth redirects for `/`, `/auth`, `/app`, `/admin`, `/entry`
 
 ## Routing Rules
