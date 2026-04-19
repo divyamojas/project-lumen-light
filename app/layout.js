@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Inter, Playfair_Display } from "next/font/google";
 import AppChrome from "../components/AppChrome";
 import AuthDock from "../components/AuthDock";
@@ -47,11 +48,13 @@ export default function RootLayout({ children }) {
         <ErrorBoundary>
           <AuthProvider>
             <MemoryGuard />
-            <RouteGate>
-              <AppChrome>{children}</AppChrome>
-              <AuthDock />
-              <ApiMonitorOverlay />
-            </RouteGate>
+            <Suspense>
+              <RouteGate>
+                <AppChrome>{children}</AppChrome>
+                <AuthDock />
+                <ApiMonitorOverlay />
+              </RouteGate>
+            </Suspense>
           </AuthProvider>
         </ErrorBoundary>
       </body>
