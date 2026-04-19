@@ -8,6 +8,9 @@
   --app-bg: #f3eee6;
   --app-bg-secondary: #e6efe8;
   --app-bg-tertiary: #f6f1ea;
+  --app-glow: rgba(255, 178, 120, 0.2);
+  --app-glow-secondary: rgba(79, 149, 121, 0.18);
+  --app-glow-tertiary: rgba(67, 105, 170, 0.14);
   --topbar-bg: rgba(255, 250, 244, 0.78);
   --surface: rgba(255, 252, 248, 0.92);
   --surface-strong: rgba(255, 251, 245, 0.96);
@@ -38,6 +41,9 @@
   --app-bg: #12171d;
   --app-bg-secondary: #1d2430;
   --app-bg-tertiary: #10151c;
+  --app-glow: rgba(255, 175, 118, 0.16);
+  --app-glow-secondary: rgba(119, 214, 181, 0.14);
+  --app-glow-tertiary: rgba(106, 142, 255, 0.16);
   --topbar-bg: rgba(18, 23, 29, 0.76);
   --surface: rgba(34, 39, 51, 0.9);
   --surface-strong: rgba(28, 33, 43, 0.94);
@@ -67,7 +73,7 @@ html,
 body {
   min-height: 100%;
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--app-bg-secondary) 48%, transparent), transparent 42%),
+    radial-gradient(circle at top left, color-mix(in srgb, var(--app-glow-secondary) 58%, transparent), transparent 40%),
     linear-gradient(180deg, var(--app-bg) 0%, color-mix(in srgb, var(--app-bg) 72%, var(--app-bg-secondary)) 100%);
 }
 
@@ -121,8 +127,79 @@ a:focus-visible {
     border: 1px solid var(--surface-border);
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.06) inset,
-      0 24px 48px rgba(0, 0, 0, 0.1),
-      0 4px 12px rgba(0, 0, 0, 0.06);
+      0 12px 28px rgba(0, 0, 0, 0.08);
+  }
+
+  .lively-shell {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .lively-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--app-glow-secondary) 54%, transparent), transparent 26%);
+    filter: blur(18px);
+    opacity: 0.42;
+  }
+
+  .hero-panel {
+    position: relative;
+    overflow: hidden;
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--surface-strong) 92%, transparent), color-mix(in srgb, var(--app-bg-secondary) 16%, var(--surface)));
+    box-shadow:
+      0 10px 24px rgba(8, 12, 18, 0.08),
+      0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  }
+
+  .hero-panel::after {
+    content: "";
+    position: absolute;
+    inset: auto -8% -38% auto;
+    width: 12rem;
+    height: 12rem;
+    border-radius: 9999px;
+    background: radial-gradient(circle, color-mix(in srgb, var(--app-glow) 38%, transparent), transparent 72%);
+    opacity: 0.34;
+    pointer-events: none;
+  }
+
+  .metric-card {
+    position: relative;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--app-bg-secondary) 18%, var(--surface)));
+    box-shadow:
+      0 10px 20px rgba(8, 12, 18, 0.07),
+      0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  }
+
+  .metric-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 1px solid color-mix(in srgb, var(--surface-border) 88%, white 12%);
+    pointer-events: none;
+  }
+
+  .command-card {
+    position: relative;
+    overflow: hidden;
+    background:
+      linear-gradient(145deg, color-mix(in srgb, var(--surface-strong) 94%, transparent), color-mix(in srgb, var(--app-bg-secondary) 24%, var(--surface)));
+    box-shadow:
+      0 12px 28px rgba(8, 12, 18, 0.1),
+      0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  }
+
+  .glow-chip {
+    box-shadow: 0 6px 14px color-mix(in srgb, var(--app-glow-secondary) 18%, transparent);
   }
 
   .chip {

@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthProvider";
 import ApiErrorSnackbar from "./ApiErrorSnackbar";
+import { useFloatingPanel } from "../hooks/useFloatingPanel";
 
 const labelFromRole = (role) => {
   if (role === "admin") {
@@ -25,8 +26,59 @@ export function AuthDock() {
     signOut,
   } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [error, setError] = useState("");
   const [apiError, setApiError] = useState(null);
+  const [memoryNotice, setMemoryNotice] = useState("");
+  const { panelRef, position, isDragging, handleDragStart } = useFloatingPanel({
+    storageKey: "lumen_access_dock_position",
+    fallbackWidth: 380,
+    fallbackHeight: isExpanded && !isMinimized ? 260 : 88,
+    getDefaultPosition: ({ viewportWidth, viewportHeight, panelWidth }) => ({
+      x: Math.max(16, viewportWidth - panelWidth - 16),
+      y: Math.max(16, viewportHeight - 120),
+    }),
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const savedValue = window.localStorage.getItem("lumen_access_dock_minimized");
+    setIsMinimized(savedValue === "true");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem("lumen_access_dock_minimized", String(isMinimized));
+  }, [isMinimized]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleMemoryPressure = (event) => {
+      const detail = event?.detail || {};
+      setIsExpanded(false);
+      setIsMinimized(true);
+      setMemoryNotice(
+        detail.usedMB
+          ? `Collapsed to reduce memory pressure at ${detail.usedMB} MB.`
+          : "Collapsed to reduce memory pressure."
+      );
+    };
+
+    window.addEventListener("lumen:memory-pressure", handleMemoryPressure);
+
+    return () => {
+      window.removeEventListener("lumen:memory-pressure", handleMemoryPressure);
+    };
+  }, []);
 
   const shouldHide =
     pathname === "/" ||
@@ -61,7 +113,21 @@ export function AuthDock() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-[80] w-[calc(100%-2rem)] max-w-sm">
+    <div
+      ref={panelRef}
+      className="fixed z-[80] w-[min(24rem,calc(100vw-2rem))]"
+      style={
+        position
+          ? {
+              left: `${position.x}px`,
+              top: `${position.y}px`,
+            }
+          : {
+              right: "1rem",
+              bottom: "1rem",
+            }
+      }
+    >
       <div
         className="rounded-[28px] border px-4 py-3 shadow-[0_24px_50px_rgba(14,18,26,0.18)] backdrop-blur-xl"
         style={{
@@ -69,7 +135,11 @@ export function AuthDock() {
           borderColor: "var(--surface-border)",
         }}
       >
-        <div className="flex items-center justify-between gap-3">
+        <div
+          onPointerDown={handleDragStart}
+          className="flex items-center justify-between gap-3"
+          style={{ touchAction: "none", cursor: isDragging ? "grabbing" : "grab" }}
+        >
           <div>
             <p className="text-[11px] uppercase tracking-[0.24em]" style={{ color: "var(--text-muted)" }}>
               Access
@@ -80,23 +150,43 @@ export function AuthDock() {
             <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
               {session?.user?.email || "Admin tools stay isolated from the journal UI."}
             </p>
+            {memoryNotice ? (
+              <p className="mt-1 text-[11px]" style={{ color: "var(--button-danger-bg)" }}>
+                {memoryNotice}
+              </p>
+            ) : null}
           </div>
-
-          <button
-            type="button"
-            onClick={() => setIsExpanded((current) => !current)}
-            className="touch-target rounded-full px-4 py-2 text-sm font-medium interactive"
-            style={{
-              backgroundColor: "var(--button-secondary-bg)",
-              color: "var(--button-secondary-text)",
-              border: "1px solid var(--surface-border)",
-            }}
-          >
-            {isExpanded ? "Close" : "Open"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => setIsMinimized((current) => !current)}
+              className="touch-target rounded-full px-3 py-2 text-xs font-medium interactive"
+              style={{
+                backgroundColor: "var(--button-secondary-bg)",
+                color: "var(--button-secondary-text)",
+                border: "1px solid var(--surface-border)",
+              }}
+            >
+              {isMinimized ? "Expand" : "Minimize"}
+            </button>
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => setIsExpanded((current) => !current)}
+              className="touch-target rounded-full px-4 py-2 text-sm font-medium interactive"
+              style={{
+                backgroundColor: "var(--button-secondary-bg)",
+                color: "var(--button-secondary-text)",
+                border: "1px solid var(--surface-border)",
+              }}
+            >
+              {isExpanded ? "Close" : "Open"}
+            </button>
+          </div>
         </div>
 
-        {isExpanded ? (
+        {isExpanded && !isMinimized ? (
           <div className="mt-4 space-y-3 animate-fade-in">
             {isSignedIn ? (
               <>

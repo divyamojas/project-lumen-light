@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import ApiErrorSnackbar from "./ApiErrorSnackbar";
 import {
+  clearApiMonitorLogs,
+  getApiMonitorSnapshot,
+  subscribeApiMonitor,
+} from "../lib/api-monitor";
+import {
   applyAdminMigrations,
   deleteAdminEntry,
   deleteAdminUser,
@@ -22,6 +27,7 @@ const SECTIONS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "users", label: "Users" },
   { id: "entries", label: "Entries" },
+  { id: "api-monitor", label: "API Monitor" },
   { id: "schema", label: "Schema" },
   { id: "migrations", label: "Migrations" },
   { id: "sql", label: "SQL Console" },
@@ -152,12 +158,25 @@ export function AdminPanel() {
   const [isBusy, setIsBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [apiError, setApiError] = useState(null);
+  const [monitorSnapshot, setMonitorSnapshot] = useState(() => getApiMonitorSnapshot());
 
   const showApiError = (errorInfo) => {
     if (errorInfo) {
       setApiError(errorInfo);
     }
   };
+
+  useEffect(() => {
+    if (activeSection !== "api-monitor") {
+      return undefined;
+    }
+
+    setMonitorSnapshot(getApiMonitorSnapshot());
+
+    return subscribeApiMonitor(() => {
+      setMonitorSnapshot(getApiMonitorSnapshot());
+    });
+  }, [activeSection]);
 
   useEffect(() => {
     let isMounted = true;
@@ -476,7 +495,7 @@ export function AdminPanel() {
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8">
       <div className="grid gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
         <aside
-          className="rounded-[30px] border p-4 lg:sticky lg:top-6 lg:h-fit"
+          className="hero-panel rounded-[30px] border p-4 lg:sticky lg:top-6 lg:h-fit"
           style={{
             backgroundColor: "color-mix(in srgb, var(--surface-strong) 88%, transparent)",
             borderColor: "var(--surface-border)",
@@ -505,13 +524,15 @@ export function AdminPanel() {
           <nav className="mt-4 space-y-2">
             {SECTIONS.map((section) => {
               const disabled = section.id === "sql" && !isSuperuser;
+              const monitorDisabled = section.id === "api-monitor" && !isSuperuser;
+              const isDisabled = disabled || monitorDisabled;
 
               return (
                 <button
                   key={section.id}
                   type="button"
-                  onClick={() => !disabled && setActiveSection(section.id)}
-                  disabled={disabled}
+                  onClick={() => !isDisabled && setActiveSection(section.id)}
+                  disabled={isDisabled}
                   className="flex w-full items-center justify-between rounded-[20px] px-4 py-3 text-left text-sm font-medium disabled:cursor-not-allowed disabled:opacity-45"
                   style={{
                     backgroundColor:
@@ -525,7 +546,7 @@ export function AdminPanel() {
                   }}
                 >
                   <span>{section.label}</span>
-                  {disabled ? <span className="text-[10px] uppercase tracking-[0.16em]">superuser</span> : null}
+                  {isDisabled ? <span className="text-[10px] uppercase tracking-[0.16em]">superuser</span> : null}
                 </button>
               );
             })}
@@ -556,7 +577,7 @@ export function AdminPanel() {
                 ].map((item) => (
                   <div
                     key={item.label}
-                    className="rounded-[24px] border p-5"
+                    className="metric-card rounded-[24px] border p-5"
                     style={{
                       borderColor: "var(--surface-border)",
                       background:
@@ -574,7 +595,7 @@ export function AdminPanel() {
               </div>
 
               <div className="mt-5 grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-                <div className="rounded-[24px] border p-4" style={{ borderColor: "var(--surface-border)" }}>
+                <div className="command-card rounded-[24px] border p-4" style={{ borderColor: "var(--surface-border)" }}>
                   <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
                     Recent activity
                   </p>
@@ -603,7 +624,7 @@ export function AdminPanel() {
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border p-4" style={{ borderColor: "var(--surface-border)" }}>
+                <div className="hero-panel rounded-[24px] border p-4" style={{ borderColor: "var(--surface-border)" }}>
                   <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
                     Session mode
                   </p>
@@ -817,6 +838,133 @@ export function AdminPanel() {
                   </tbody>
                 </table>
               </TableShell>
+            </SectionShell>
+          ) : null}
+
+          {activeSection === "api-monitor" ? (
+            <SectionShell
+              eyebrow="Observability"
+              title="API Monitor"
+              actions={isSuperuser ? (
+                <button
+                  type="button"
+                  onClick={clearApiMonitorLogs}
+                  className="rounded-full px-4 py-2 text-sm font-semibold"
+                  style={{
+                    backgroundColor: "var(--button-secondary-bg)",
+                    color: "var(--button-secondary-text)",
+                    border: "1px solid var(--surface-border)",
+                  }}
+                >
+                  Clear log
+                </button>
+              ) : null}
+            >
+              {isSuperuser ? (
+                <>
+                  <div className="grid gap-4 md:grid-cols-4">
+                    {[
+                      { label: "Tracked Requests", value: monitorSnapshot.logs.length },
+                      { label: "Live Requests", value: monitorSnapshot.activeCount },
+                      { label: "Errors", value: monitorSnapshot.logs.filter((log) => log.status === "error").length },
+                      {
+                        label: "Avg Latency",
+                        value: (() => {
+                          const samples = monitorSnapshot.logs.filter((log) => typeof log.durationMs === "number");
+                          return samples.length
+                            ? `${Math.round(samples.reduce((sum, log) => sum + log.durationMs, 0) / samples.length)} ms`
+                            : "—";
+                        })(),
+                      },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded-[24px] border p-5"
+                        style={{
+                          borderColor: "var(--surface-border)",
+                          background:
+                            "linear-gradient(180deg, color-mix(in srgb, var(--surface) 94%, transparent), color-mix(in srgb, var(--app-bg-secondary) 32%, var(--surface)))",
+                        }}
+                      >
+                        <p className="text-xs uppercase tracking-[0.16em]" style={{ color: "var(--text-muted)" }}>
+                          {item.label}
+                        </p>
+                        <p className="mt-3 text-3xl font-semibold" style={{ color: "var(--text-primary)" }}>
+                          {item.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 rounded-[24px] border p-4" style={{ borderColor: "var(--surface-border)" }}>
+                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                      Live request log
+                    </p>
+                    <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-secondary)" }}>
+                      This tracks frontend-observed API requests from auth, journal, and admin flows in the current browser session. Use the overlay for ambient monitoring and this dashboard for deeper inspection.
+                    </p>
+
+                    <div className="mt-4 space-y-3">
+                      {monitorSnapshot.logs.length ? monitorSnapshot.logs.map((log) => (
+                        <div
+                          key={log.id}
+                          className="rounded-[20px] border px-4 py-4"
+                          style={{
+                            borderColor: "var(--surface-border)",
+                            backgroundColor: "color-mix(in srgb, var(--surface) 88%, transparent)",
+                          }}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                                {log.method}
+                              </span>
+                              <span
+                                className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                                style={{
+                                  backgroundColor:
+                                    log.status === "error"
+                                      ? "color-mix(in srgb, var(--button-danger-bg) 14%, transparent)"
+                                      : log.status === "pending"
+                                        ? "var(--chip-bg)"
+                                        : "var(--badge-bg)",
+                                  color:
+                                    log.status === "error"
+                                      ? "var(--button-danger-bg)"
+                                      : log.status === "pending"
+                                        ? "var(--chip-text)"
+                                        : "var(--badge-text)",
+                                }}
+                              >
+                                {log.status}
+                              </span>
+                              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                                {log.source}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs" style={{ color: "var(--text-muted)" }}>
+                              <span>{log.statusCode ? `HTTP ${log.statusCode}` : "No status"}</span>
+                              <span>{typeof log.durationMs === "number" ? `${log.durationMs} ms` : "—"}</span>
+                            </div>
+                          </div>
+                          <p className="mt-3 break-all text-sm leading-6" style={{ color: "var(--text-secondary)" }}>
+                            {log.url}
+                          </p>
+                          {log.errorMessage ? (
+                            <p className="mt-2 text-sm leading-6" style={{ color: "var(--button-danger-bg)" }}>
+                              {log.errorCode ? `${log.errorCode}: ${log.errorMessage}` : log.errorMessage}
+                            </p>
+                          ) : null}
+                        </div>
+                      )) : (
+                        <EmptyState title="No API traffic yet" description="Use the app normally and tracked requests will appear here in real time." />
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <EmptyState title="Superuser access required" description="API monitoring is available only to superusers." />
+              )}
             </SectionShell>
           ) : null}
 

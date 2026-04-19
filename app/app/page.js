@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  memo,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -50,6 +51,116 @@ const isInteractiveElement = (element) => {
 };
 
 const REFRESH_DEBOUNCE_MS = 12000;
+
+const StatsStrip = memo(function StatsStrip({ reflectionSummary }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-4">
+      {[
+        ["Entries", reflectionSummary.totalEntries],
+        ["This Week", reflectionSummary.thisWeekCount],
+        ["Streak", `${reflectionSummary.streak} days`],
+        ["Favorites", reflectionSummary.favoriteCount],
+      ].map(([label, value]) => (
+        <div key={label} className="metric-card rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+          <p className="text-xs uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+            {label}
+          </p>
+          <p className="mt-3 text-3xl font-semibold" style={{ color: "var(--text-primary)" }}>
+            {value}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+});
+
+const QuickStartPanel = memo(function QuickStartPanel({ onOpenTemplate, onOpenPrompt }) {
+  return (
+    <section className="rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+      <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+        Quick Start
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {JOURNAL_TEMPLATES.slice(1).map((template) => (
+          <button
+            key={template.id}
+            type="button"
+            onClick={() => onOpenTemplate(template.id)}
+            className="touch-target rounded-full px-4 py-2 text-sm"
+            style={{
+              border: "1px solid var(--surface-border)",
+              backgroundColor: "var(--button-secondary-bg)",
+              color: "var(--button-secondary-text)",
+            }}
+          >
+            {template.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-4 space-y-2">
+        {JOURNAL_PROMPTS.slice(0, 3).map((prompt) => (
+          <button
+            key={prompt}
+            type="button"
+            onClick={() => onOpenPrompt(prompt)}
+            className="block w-full rounded-2xl p-3 text-left text-sm transition hover:brightness-105"
+            style={{
+              backgroundColor: "var(--surface-strong)",
+              border: "1px solid var(--surface-border)",
+              color: "var(--text-primary)",
+            }}
+          >
+            {prompt}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+});
+
+const ReflectionPanel = memo(function ReflectionPanel({ reflectionSummary }) {
+  return (
+    <section className="rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+      <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+        Weekly Reflection
+      </p>
+      {reflectionSummary.topTags.length ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {reflectionSummary.topTags.map((item) => (
+            <span key={item.tag} className="rounded-full px-3 py-1 text-xs" style={{ backgroundColor: "var(--badge-bg)", color: "var(--badge-text)" }}>
+              #{item.tag} · {item.count}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
+          Top tags will appear here once you start tagging entries.
+        </p>
+      )}
+      <p className="mt-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+        This week you wrote {reflectionSummary.thisWeekCount} entries. Keep the streak gentle: {reflectionSummary.streak} consecutive days.
+      </p>
+    </section>
+  );
+});
+
+const BackupPanel = memo(function BackupPanel({ lastExport }) {
+  return (
+    <section className="rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+      <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+        Backup Status
+      </p>
+      <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
+        {lastExport
+          ? `Last export: ${new Date(lastExport.timestamp).toLocaleString()}${lastExport.encrypted ? " (encrypted)" : ""}`
+          : "No backup recorded yet."}
+      </p>
+      <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
+        Encrypted exports stay local and require the same passphrase for restore.
+      </p>
+    </section>
+  );
+});
 
 export function HomePage() {
   const router = useRouter();
@@ -224,8 +335,20 @@ export function HomePage() {
   ]);
 
   const reflectionSummary = useMemo(() => buildReflectionSummary(entries), [entries]);
-  const calendar = useMemo(() => buildCalendarMatrix(filteredEntries, activeMonth), [activeMonth, filteredEntries]);
-  const timelineGroups = useMemo(() => buildTimelineGroups(filteredEntries), [filteredEntries]);
+  const calendar = useMemo(() => {
+    if (viewMode !== "calendar") {
+      return [];
+    }
+
+    return buildCalendarMatrix(filteredEntries, activeMonth);
+  }, [activeMonth, filteredEntries, viewMode]);
+  const timelineGroups = useMemo(() => {
+    if (viewMode !== "timeline") {
+      return [];
+    }
+
+    return buildTimelineGroups(filteredEntries);
+  }, [filteredEntries, viewMode]);
   const previewLength = previewMode === "compact" ? 90 : 200;
 
   const refreshEntries = async () => {
@@ -463,19 +586,205 @@ export function HomePage() {
     ? `${activeFilterCount} active ${activeFilterCount === 1 ? "filter" : "filters"}`
     : "Everything is in view";
   const utilityLabel = `${filteredEntries.length} matching ${filteredEntries.length === 1 ? "entry" : "entries"}`;
+  const primaryView = useMemo(() => {
+    if (isLoading) {
+      return (
+        <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="skeleton h-48 rounded-[28px]" style={{ animationDelay: `${i * 80}ms` }} />
+          ))}
+        </div>
+      );
+    }
+
+    if (entries.length === 0) {
+      return (
+        <div className="mt-8 rounded-[28px] p-8 text-center" style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}>
+          <p className="text-base" style={{ color: "var(--text-secondary)" }}>
+            Nothing here yet. Start writing, then organize your journal with tags, collections, favorites, and backups.
+          </p>
+        </div>
+      );
+    }
+
+    if (filteredEntries.length === 0) {
+      return (
+        <div className="mt-8 rounded-[28px] p-8 text-center" style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}>
+          <p className="text-base" style={{ color: "var(--text-secondary)" }}>
+            No entries match the current search, tag, collection, or date filters.
+          </p>
+        </div>
+      );
+    }
+
+    if (viewMode === "feed") {
+      return (
+        <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {filteredEntries.map((entry, index) => (
+            <EntryCard
+              key={entry.id}
+              entry={entry}
+              index={index}
+              appearance={appearance}
+              previewLength={previewLength}
+              onOpen={handleOpenEntry}
+              onToggleFavorite={(id) => toggleEntryField(id, "favorite")}
+              onTogglePinned={(id) => toggleEntryField(id, "pinned")}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    if (viewMode === "calendar") {
+      return (
+        <div className="mt-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                {calendar.monthLabel}
+              </p>
+              {selectedCalendarDay ? (
+                <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+                  Day filter: {selectedCalendarDay}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="month"
+                value={activeMonth}
+                onChange={(event) => setActiveMonth(event.target.value)}
+                className="rounded-2xl px-4 py-2 text-sm"
+                style={{
+                  border: "1px solid var(--surface-border)",
+                  backgroundColor: "var(--surface-strong)",
+                  color: "var(--text-primary)",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setSelectedCalendarDay("")}
+                className="rounded-full px-4 py-2 text-sm"
+                style={{
+                  border: "1px solid var(--surface-border)",
+                  backgroundColor: "var(--button-secondary-bg)",
+                  color: "var(--button-secondary-text)",
+                }}
+              >
+                Clear Day
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-7 gap-2">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+              <div key={label} className="px-2 py-1 text-center text-xs uppercase tracking-[0.14em]" style={{ color: "var(--text-muted)" }}>
+                {label}
+              </div>
+            ))}
+            {calendar.cells.map((cell, index) =>
+              cell ? (
+                <button
+                  key={cell.key}
+                  type="button"
+                  onClick={() => setSelectedCalendarDay(cell.key === selectedCalendarDay ? "" : cell.key)}
+                  className="aspect-square rounded-2xl p-2 text-left transition"
+                  style={{
+                    border: "1px solid var(--surface-border)",
+                    backgroundColor: cell.key === selectedCalendarDay ? "var(--button-bg)" : "var(--surface-strong)",
+                    color: cell.key === selectedCalendarDay ? "var(--button-text)" : "var(--text-primary)",
+                  }}
+                >
+                  <span className="text-xs font-semibold">{cell.day}</span>
+                  <span className="mt-3 block text-xs opacity-80">{cell.count || ""}</span>
+                </button>
+              ) : (
+                <div key={`empty-${index}`} />
+              )
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-6 space-y-6">
+        {timelineGroups.map((group) => (
+          <section key={group.key}>
+            <h3 className="text-sm font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+              {group.label}
+            </h3>
+            <div className="mt-3 space-y-3">
+              {group.entries.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => handleOpenEntry(entry.id)}
+                  className="block w-full rounded-[24px] p-4 text-left transition hover:brightness-105"
+                  style={{
+                    backgroundColor: "var(--surface-strong)",
+                    border: "1px solid var(--surface-border)",
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
+                        {entry.title}
+                      </p>
+                      <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+                        {new Date(entry.createdAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </p>
+                    </div>
+                    <span className="rounded-full px-3 py-1 text-xs" style={{ backgroundColor: "var(--badge-bg)", color: "var(--badge-text)" }}>
+                      {(entry.tags || []).length} tags
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    );
+  }, [
+    activeMonth,
+    appearance,
+    calendar,
+    entries.length,
+    filteredEntries,
+    handleOpenEntry,
+    isLoading,
+    previewLength,
+    selectedCalendarDay,
+    timelineGroups,
+    viewMode,
+  ]);
+
+  const sideRail = useMemo(() => {
+    return (
+      <div className="space-y-5">
+        <QuickStartPanel onOpenTemplate={handleOpenTemplate} onOpenPrompt={handleOpenPrompt} />
+        <ReflectionPanel reflectionSummary={reflectionSummary} />
+        <BackupPanel lastExport={lastExport} />
+      </div>
+    );
+  }, [handleOpenPrompt, handleOpenTemplate, lastExport, reflectionSummary]);
 
   return (
     <main
-      className="min-h-screen pb-28 pt-4 transition-colors duration-500 md:pt-6"
+      className="lively-shell min-h-screen pb-28 pt-4 transition-colors duration-300 md:pt-6"
       style={{
-        background:
-          "radial-gradient(circle at top left, color-mix(in srgb, var(--app-bg-secondary) 48%, transparent), transparent 42%), linear-gradient(180deg, var(--app-bg) 0%, color-mix(in srgb, var(--app-bg) 72%, var(--app-bg-secondary)) 100%)",
+        background: "linear-gradient(180deg, var(--app-bg) 0%, color-mix(in srgb, var(--app-bg) 80%, var(--app-bg-secondary)) 100%)",
       }}
     >
       <header className="pointer-events-none sticky top-4 z-40 px-5 md:px-8">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
           <div
-            className="pointer-events-auto relative overflow-visible rounded-[30px] border px-3 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.12)] backdrop-blur-xl md:px-4"
+            className="hero-panel pointer-events-auto relative overflow-visible rounded-[34px] border px-3 py-3 md:px-4"
             style={{
               backgroundColor: "color-mix(in srgb, var(--surface) 76%, transparent)",
               borderColor: "color-mix(in srgb, var(--surface-border) 88%, white 12%)",
@@ -483,7 +792,7 @@ export function HomePage() {
           >
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               <div className="flex items-center gap-3 lg:min-w-[11rem]">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl" style={{ backgroundColor: "color-mix(in srgb, var(--button-bg) 14%, transparent)" }}>
+                <div className="float-card flex h-11 w-11 items-center justify-center rounded-2xl glow-chip" style={{ backgroundColor: "color-mix(in srgb, var(--button-bg) 14%, transparent)" }}>
                   <span className="font-[family-name:var(--font-playfair)] text-lg" style={{ color: "var(--text-primary)" }}>
                     L
                   </span>
@@ -647,11 +956,58 @@ export function HomePage() {
               </span>
             </div>
 
+            <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.8fr]">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em]" style={{ color: "var(--text-muted)" }}>
+                  Today&apos;s pulse
+                </p>
+                <h1 className="mt-2 font-[family-name:var(--font-playfair)] text-3xl leading-tight md:text-[2.6rem]" style={{ color: "var(--text-primary)" }}>
+                  Your journal should feel alive, not filed away.
+                </h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 md:text-base" style={{ color: "var(--text-secondary)" }}>
+                  Scan momentum, jump into a fresh thought, and move between feed, calendar, and timeline without losing the emotional thread of your week.
+                </p>
+              </div>
+              <div className="command-card rounded-[28px] px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+                    Command center
+                  </p>
+                  <span className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ backgroundColor: "var(--badge-bg)", color: "var(--badge-text)" }}>
+                    Live
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  {[
+                    ["Entries", reflectionSummary.totalEntries],
+                    ["This week", reflectionSummary.thisWeekCount],
+                    ["Streak", `${reflectionSummary.streak} days`],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-[22px] px-3 py-3"
+                      style={{
+                        backgroundColor: "color-mix(in srgb, var(--surface) 84%, transparent)",
+                        border: "1px solid var(--surface-border)",
+                      }}
+                    >
+                      <p className="text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--text-muted)" }}>
+                        {label}
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
+                        {value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
           </div>
 
           {activeTopPanel === "filters" ? (
             <div
-              className="pointer-events-auto grid gap-4 rounded-[28px] border px-5 py-5 shadow-[0_16px_40px_rgba(0,0,0,0.08)] backdrop-blur-xl md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]"
+              className="pointer-events-auto grid gap-4 rounded-[28px] border px-5 py-5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]"
               style={{
                 backgroundColor: "color-mix(in srgb, var(--surface) 92%, transparent)",
                 borderColor: "var(--surface-border)",
@@ -808,7 +1164,7 @@ export function HomePage() {
 
           {activeTopPanel === "library" ? (
             <div
-              className="pointer-events-auto grid gap-4 rounded-[28px] border px-5 py-5 shadow-[0_16px_40px_rgba(0,0,0,0.08)] backdrop-blur-xl md:grid-cols-[minmax(0,1fr)_auto_auto]"
+              className="pointer-events-auto grid gap-4 rounded-[28px] border px-5 py-5 md:grid-cols-[minmax(0,1fr)_auto_auto]"
               style={{
                 backgroundColor: "color-mix(in srgb, var(--surface) 92%, transparent)",
                 borderColor: "var(--surface-border)",
@@ -842,7 +1198,7 @@ export function HomePage() {
 
           {activeTopPanel === "settings" ? (
             <div
-              className="pointer-events-auto grid gap-4 rounded-[28px] border px-5 py-5 shadow-[0_16px_40px_rgba(0,0,0,0.08)] backdrop-blur-xl md:grid-cols-3"
+              className="pointer-events-auto grid gap-4 rounded-[28px] border px-5 py-5 md:grid-cols-3"
               style={{
                 backgroundColor: "color-mix(in srgb, var(--surface) 92%, transparent)",
                 borderColor: "var(--surface-border)",
@@ -968,26 +1324,10 @@ export function HomePage() {
       </header>
 
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 pb-8 pt-28 md:px-8 md:pb-10 md:pt-32">
-        <div className="grid gap-4 md:grid-cols-4">
-          {[
-            ["Entries", reflectionSummary.totalEntries],
-            ["This Week", reflectionSummary.thisWeekCount],
-            ["Streak", `${reflectionSummary.streak} days`],
-            ["Favorites", reflectionSummary.favoriteCount],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-[28px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
-              <p className="text-xs uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
-                {label}
-              </p>
-              <p className="mt-3 text-3xl font-semibold" style={{ color: "var(--text-primary)" }}>
-                {value}
-              </p>
-            </div>
-          ))}
-        </div>
+        <StatsStrip reflectionSummary={reflectionSummary} />
 
         <div className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
-          <div className="rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
+          <div className="hero-panel rounded-[32px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -1015,238 +1355,10 @@ export function HomePage() {
               </div>
             </div>
 
-            {isLoading ? (
-              <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="skeleton h-48 rounded-[28px]" style={{ animationDelay: `${i * 80}ms` }} />
-                ))}
-              </div>
-            ) : null}
-
-            {!isLoading && entries.length === 0 ? (
-              <div className="mt-8 rounded-[28px] p-8 text-center" style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}>
-                <p className="text-base" style={{ color: "var(--text-secondary)" }}>
-                  Nothing here yet. Start writing, then organize your journal with tags, collections, favorites, and backups.
-                </p>
-              </div>
-            ) : null}
-
-            {!isLoading && entries.length > 0 && filteredEntries.length === 0 ? (
-              <div className="mt-8 rounded-[28px] p-8 text-center" style={{ backgroundColor: "var(--surface-strong)", border: "1px solid var(--surface-border)" }}>
-                <p className="text-base" style={{ color: "var(--text-secondary)" }}>
-                  No entries match the current search, tag, collection, or date filters.
-                </p>
-              </div>
-            ) : null}
-
-            {!isLoading && filteredEntries.length > 0 && viewMode === "feed" ? (
-              <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {filteredEntries.map((entry, index) => (
-                  <EntryCard
-                    key={entry.id}
-                    entry={entry}
-                    index={index}
-                    appearance={appearance}
-                    previewLength={previewLength}
-                    onOpen={handleOpenEntry}
-                    onToggleFavorite={(id) => toggleEntryField(id, "favorite")}
-                    onTogglePinned={(id) => toggleEntryField(id, "pinned")}
-                  />
-                ))}
-              </div>
-            ) : null}
-
-            {!isLoading && filteredEntries.length > 0 && viewMode === "calendar" ? (
-              <div className="mt-6">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                      {calendar.monthLabel}
-                    </p>
-                    {selectedCalendarDay ? (
-                      <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-                        Day filter: {selectedCalendarDay}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="month"
-                      value={activeMonth}
-                      onChange={(event) => setActiveMonth(event.target.value)}
-                      className="rounded-2xl px-4 py-2 text-sm"
-                      style={{
-                        border: "1px solid var(--surface-border)",
-                        backgroundColor: "var(--surface-strong)",
-                        color: "var(--text-primary)",
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCalendarDay("")}
-                      className="rounded-full px-4 py-2 text-sm"
-                      style={{
-                        border: "1px solid var(--surface-border)",
-                        backgroundColor: "var(--button-secondary-bg)",
-                        color: "var(--button-secondary-text)",
-                      }}
-                    >
-                      Clear Day
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-7 gap-2">
-                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
-                    <div key={label} className="px-2 py-1 text-center text-xs uppercase tracking-[0.14em]" style={{ color: "var(--text-muted)" }}>
-                      {label}
-                    </div>
-                  ))}
-                  {calendar.cells.map((cell, index) =>
-                    cell ? (
-                      <button
-                        key={cell.key}
-                        type="button"
-                        onClick={() => setSelectedCalendarDay(cell.key === selectedCalendarDay ? "" : cell.key)}
-                        className="aspect-square rounded-2xl p-2 text-left transition"
-                        style={{
-                          border: "1px solid var(--surface-border)",
-                          backgroundColor: cell.key === selectedCalendarDay ? "var(--button-bg)" : "var(--surface-strong)",
-                          color: cell.key === selectedCalendarDay ? "var(--button-text)" : "var(--text-primary)",
-                        }}
-                      >
-                        <span className="text-xs font-semibold">{cell.day}</span>
-                        <span className="mt-3 block text-xs opacity-80">{cell.count || ""}</span>
-                      </button>
-                    ) : (
-                      <div key={`empty-${index}`} />
-                    )
-                  )}
-                </div>
-              </div>
-            ) : null}
-
-            {!isLoading && filteredEntries.length > 0 && viewMode === "timeline" ? (
-              <div className="mt-6 space-y-6">
-                {timelineGroups.map((group) => (
-                  <section key={group.key}>
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
-                      {group.label}
-                    </h3>
-                    <div className="mt-3 space-y-3">
-                      {group.entries.map((entry) => (
-                        <button
-                          key={entry.id}
-                          type="button"
-                          onClick={() => handleOpenEntry(entry.id)}
-                          className="block w-full rounded-[24px] p-4 text-left transition hover:brightness-105"
-                          style={{
-                            backgroundColor: "var(--surface-strong)",
-                            border: "1px solid var(--surface-border)",
-                          }}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
-                                {entry.title}
-                              </p>
-                              <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-                                {new Date(entry.createdAt).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                })}
-                              </p>
-                            </div>
-                            <span className="rounded-full px-3 py-1 text-xs" style={{ backgroundColor: "var(--badge-bg)", color: "var(--badge-text)" }}>
-                              {(entry.tags || []).length} tags
-                            </span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            ) : null}
+            {primaryView}
           </div>
 
-          <div className="space-y-5">
-            <section className="rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
-              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                Quick Start
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {JOURNAL_TEMPLATES.slice(1).map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    onClick={() => handleOpenTemplate(template.id)}
-                    className="touch-target rounded-full px-4 py-2 text-sm"
-                    style={{
-                      border: "1px solid var(--surface-border)",
-                      backgroundColor: "var(--button-secondary-bg)",
-                      color: "var(--button-secondary-text)",
-                    }}
-                  >
-                    {template.label}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-4 space-y-2">
-                {JOURNAL_PROMPTS.slice(0, 3).map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() => handleOpenPrompt(prompt)}
-                    className="block w-full rounded-2xl p-3 text-left text-sm transition hover:brightness-105"
-                    style={{
-                      backgroundColor: "var(--surface-strong)",
-                      border: "1px solid var(--surface-border)",
-                      color: "var(--text-primary)",
-                    }}
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
-              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                Weekly Reflection
-              </p>
-              {reflectionSummary.topTags.length ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {reflectionSummary.topTags.map((item) => (
-                    <span key={item.tag} className="rounded-full px-3 py-1 text-xs" style={{ backgroundColor: "var(--badge-bg)", color: "var(--badge-text)" }}>
-                      #{item.tag} · {item.count}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
-                  Top tags will appear here once you start tagging entries.
-                </p>
-              )}
-              <p className="mt-4 text-sm" style={{ color: "var(--text-secondary)" }}>
-                This week you wrote {reflectionSummary.thisWeekCount} entries. Keep the streak gentle: {reflectionSummary.streak} consecutive days.
-              </p>
-            </section>
-
-            <section className="rounded-[30px] p-5" style={{ backgroundColor: "var(--surface)", border: "1px solid var(--surface-border)" }}>
-              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                Backup Status
-              </p>
-              <p className="mt-3 text-sm" style={{ color: "var(--text-secondary)" }}>
-                {lastExport
-                  ? `Last export: ${new Date(lastExport.timestamp).toLocaleString()}${lastExport.encrypted ? " (encrypted)" : ""}`
-                  : "No backup recorded yet."}
-              </p>
-              <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
-                Encrypted exports stay local and require the same passphrase for restore.
-              </p>
-            </section>
-          </div>
+          {sideRail}
         </div>
       </section>
 

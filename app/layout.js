@@ -1,8 +1,10 @@
 import { Inter, Playfair_Display } from "next/font/google";
 import AppChrome from "../components/AppChrome";
 import AuthDock from "../components/AuthDock";
+import ApiMonitorOverlay from "../components/ApiMonitorOverlay";
 import AuthProvider from "../components/AuthProvider";
 import ErrorBoundary from "../components/ErrorBoundary";
+import MemoryGuard from "../components/MemoryGuard";
 import RouteGate from "../components/RouteGate";
 import "./globals.css";
 
@@ -44,9 +46,11 @@ export default function RootLayout({ children }) {
       <body className="font-[family-name:var(--font-inter)] antialiased transition-colors duration-500">
         <ErrorBoundary>
           <AuthProvider>
+            <MemoryGuard />
             <RouteGate>
               <AppChrome>{children}</AppChrome>
               <AuthDock />
+              <ApiMonitorOverlay />
             </RouteGate>
           </AuthProvider>
         </ErrorBoundary>
