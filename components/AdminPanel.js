@@ -4,8 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import ApiErrorSnackbar from "./ApiErrorSnackbar";
 import {
+  applySearchQuery,
   clearApiMonitorLogs,
+  getDurationColor,
   getApiMonitorSnapshot,
+  getMethodStyle,
+  getStatusCodeColor,
+  getStatusStyle,
+  prettyJson,
   subscribeApiMonitor,
 } from "../lib/api-monitor";
 import {
@@ -161,8 +167,11 @@ export function AdminPanel() {
   const [monitorSnapshot, setMonitorSnapshot] = useState(() => getApiMonitorSnapshot());
   const [monitorMethodFilter, setMonitorMethodFilter] = useState("ALL");
   const [monitorStatusFilter, setMonitorStatusFilter] = useState("ALL");
+  const [monitorSourceFilter, setMonitorSourceFilter] = useState("ALL");
   const [monitorSearch, setMonitorSearch] = useState("");
   const [expandedLogId, setExpandedLogId] = useState(null);
+  const [highlightedLogId, setHighlightedLogId] = useState(null);
+  const [scrollToLogId, setScrollToLogId] = useState(null);
 
   const showApiError = (errorInfo) => {
     if (errorInfo) {
@@ -175,7 +184,24 @@ export function AdminPanel() {
     const params = new URLSearchParams(window.location.search);
     const section = params.get("section");
     if (section) setActiveSection(section);
+    const highlight = params.get("highlight");
+    if (!highlight) return;
+    setExpandedLogId(highlight);
+    setScrollToLogId(highlight);
+    setHighlightedLogId(highlight);
+    const flashTimer = setTimeout(() => setHighlightedLogId(null), 2500);
+    return () => clearTimeout(flashTimer);
   }, []);
+
+  useEffect(() => {
+    if (!scrollToLogId || activeSection !== "api-monitor") return;
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-log-id="${scrollToLogId}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setScrollToLogId(null);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [scrollToLogId, activeSection]);
 
   useEffect(() => {
     if (activeSection !== "api-monitor") {
@@ -189,14 +215,11 @@ export function AdminPanel() {
     });
   }, [activeSection]);
 
-  const filteredLogs = useMemo(() => {
-    return monitorSnapshot.logs.filter((log) => {
-      if (monitorMethodFilter !== "ALL" && log.method !== monitorMethodFilter) return false;
-      if (monitorStatusFilter !== "ALL" && log.status !== monitorStatusFilter) return false;
-      if (monitorSearch && !log.url.toLowerCase().includes(monitorSearch.toLowerCase())) return false;
-      return true;
-    });
-  }, [monitorSnapshot.logs, monitorMethodFilter, monitorStatusFilter, monitorSearch]);
+  const filteredLogs = useMemo(() => applySearchQuery(
+    monitorSnapshot.logs,
+    monitorSearch,
+    { method: monitorMethodFilter, status: monitorStatusFilter, source: monitorSourceFilter },
+  ), [monitorSnapshot.logs, monitorSearch, monitorMethodFilter, monitorStatusFilter, monitorSourceFilter]);
 
   useEffect(() => {
     let isMounted = true;
@@ -543,7 +566,7 @@ export function AdminPanel() {
           </div>
           <nav className="mt-4 space-y-2">
             {SECTIONS.map((section) => {
-              const disabled = section.id === "sql" && !isSuperuser;
+              const disabled = (section.id === "sql" || section.id === "api-monitor") && !isSuperuser;
               const isDisabled = disabled;
 
               return (
@@ -860,7 +883,7 @@ export function AdminPanel() {
             </SectionShell>
           ) : null}
 
-          {activeSection === "api-monitor" ? (
+          {activeSection === "api-monitor" && isSuperuser ? (
             <SectionShell
               eyebrow="Observability"
               title="API Monitor"
@@ -879,6 +902,19 @@ export function AdminPanel() {
                 </button>
               )}
             >
+              <style>{`
+                @keyframes lumen-highlight-flash {
+                  0%   { background-color: color-mix(in srgb, var(--button-bg) 18%, transparent); }
+                  40%  { background-color: color-mix(in srgb, var(--button-bg) 10%, transparent); }
+                  100% { background-color: transparent; }
+                }
+                @keyframes lumen-detail-in {
+                  from { opacity: 0; transform: translateY(-5px); }
+                  to   { opacity: 1; transform: translateY(0); }
+                }
+                .lumen-log-highlighted { animation: lumen-highlight-flash 2.4s ease forwards; border-left: 3px solid var(--button-bg) !important; }
+                .lumen-detail-panel { animation: lumen-detail-in 0.18s ease; }
+              `}</style>
               {(() => {
                 const samples = monitorSnapshot.logs.filter((log) => typeof log.durationMs === "number");
                 const avgLatency = samples.length
@@ -926,66 +962,100 @@ export function AdminPanel() {
                     </div>
 
                     <div className="mt-5 rounded-[24px] border" style={{ borderColor: "var(--surface-border)" }}>
-                      <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3" style={{ borderColor: "var(--surface-border)" }}>
-                        <div className="flex flex-wrap gap-1">
-                          {["ALL", "GET", "POST", "PATCH", "DELETE"].map((m) => (
-                            <button
-                              key={m}
-                              type="button"
-                              onClick={() => setMonitorMethodFilter(m)}
-                              className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]"
-                              style={{
-                                backgroundColor: monitorMethodFilter === m ? "var(--button-bg)" : "var(--button-secondary-bg)",
-                                color: monitorMethodFilter === m ? "var(--button-text)" : "var(--button-secondary-text)",
-                                border: "1px solid var(--surface-border)",
-                              }}
-                            >
-                              {m}
-                            </button>
-                          ))}
+                      <div className="space-y-2 border-b px-4 py-3" style={{ borderColor: "var(--surface-border)" }}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-[0.14em] w-14 shrink-0" style={{ color: "var(--text-muted)" }}>Method</span>
+                          <div className="flex flex-wrap gap-1">
+                            {["ALL", "GET", "POST", "PATCH", "DELETE"].map((m) => (
+                              <button
+                                key={m}
+                                type="button"
+                                onClick={() => setMonitorMethodFilter(m)}
+                                className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]"
+                                style={{
+                                  backgroundColor: monitorMethodFilter === m ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                                  color: monitorMethodFilter === m ? "var(--button-text)" : "var(--button-secondary-text)",
+                                  border: "1px solid var(--surface-border)",
+                                }}
+                              >
+                                {m}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-1">
-                          {[{ key: "ALL", label: "All" }, { key: "success", label: "Success" }, { key: "error", label: "Error" }, { key: "pending", label: "Pending" }].map((s) => (
-                            <button
-                              key={s.key}
-                              type="button"
-                              onClick={() => setMonitorStatusFilter(s.key)}
-                              className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]"
-                              style={{
-                                backgroundColor: monitorStatusFilter === s.key
-                                  ? (s.key === "error" ? "color-mix(in srgb, var(--button-danger-bg) 14%, transparent)" : "var(--button-bg)")
-                                  : "var(--button-secondary-bg)",
-                                color: monitorStatusFilter === s.key
-                                  ? (s.key === "error" ? "var(--button-danger-bg)" : "var(--button-text)")
-                                  : "var(--button-secondary-text)",
-                                border: "1px solid var(--surface-border)",
-                              }}
-                            >
-                              {s.label}
-                            </button>
-                          ))}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-[0.14em] w-14 shrink-0" style={{ color: "var(--text-muted)" }}>Status</span>
+                          <div className="flex flex-wrap gap-1">
+                            {[{ key: "ALL", label: "All" }, { key: "success", label: "Success" }, { key: "error", label: "Error" }, { key: "pending", label: "Pending" }].map((s) => (
+                              <button
+                                key={s.key}
+                                type="button"
+                                onClick={() => setMonitorStatusFilter(s.key)}
+                                className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]"
+                                style={{
+                                  backgroundColor: monitorStatusFilter === s.key
+                                    ? (s.key === "error" ? "color-mix(in srgb, var(--button-danger-bg) 14%, transparent)" : "var(--button-bg)")
+                                    : "var(--button-secondary-bg)",
+                                  color: monitorStatusFilter === s.key
+                                    ? (s.key === "error" ? "var(--button-danger-bg)" : "var(--button-text)")
+                                    : "var(--button-secondary-text)",
+                                  border: "1px solid var(--surface-border)",
+                                }}
+                              >
+                                {s.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-[0.14em] w-14 shrink-0" style={{ color: "var(--text-muted)" }}>Source</span>
+                          <div className="flex flex-wrap gap-1">
+                            {[{ key: "ALL", label: "All" }, { key: "requestJson", label: "requestJson" }, { key: "auth", label: "auth" }, { key: "app", label: "app" }].map((s) => (
+                              <button
+                                key={s.key}
+                                type="button"
+                                onClick={() => setMonitorSourceFilter(s.key)}
+                                className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]"
+                                style={{
+                                  backgroundColor: monitorSourceFilter === s.key ? "var(--button-bg)" : "var(--button-secondary-bg)",
+                                  color: monitorSourceFilter === s.key ? "var(--button-text)" : "var(--button-secondary-text)",
+                                  border: "1px solid var(--surface-border)",
+                                }}
+                              >
+                                {s.label}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                         <input
                           type="text"
                           value={monitorSearch}
                           onChange={(e) => setMonitorSearch(e.target.value)}
-                          placeholder="Filter by URL…"
-                          className="ml-auto rounded-full px-4 py-1.5 text-sm"
+                          placeholder="Search across all fields — or use field:value syntax (source:auth status:500 method:GET)"
+                          className="w-full rounded-[14px] px-4 py-2 text-sm"
                           style={{
                             backgroundColor: "var(--button-secondary-bg)",
                             color: "var(--text-primary)",
                             border: "1px solid var(--surface-border)",
                             outline: "none",
-                            minWidth: "180px",
                           }}
                         />
                       </div>
 
-                      <div className="divide-y" style={{ "--tw-divide-opacity": 1, borderColor: "var(--surface-border)" }}>
+                      <div className="divide-y" style={{ borderColor: "var(--surface-border)" }}>
                         {filteredLogs.length ? filteredLogs.map((log) => {
                           const isExpanded = expandedLogId === log.id;
+                          const isFlashing = highlightedLogId === log.id;
+                          const methodColors = getMethodStyle(log.method);
+                          const durationColor = getDurationColor(log.durationMs);
+                          const statusCodeColor = getStatusCodeColor(log.statusCode);
                           return (
-                            <div key={log.id}>
+                            <div
+                              key={log.id}
+                              data-log-id={log.id}
+                              className={isFlashing ? "lumen-log-highlighted" : ""}
+                              style={{ borderLeft: isExpanded && !isFlashing ? "3px solid color-mix(in srgb, var(--button-bg) 40%, transparent)" : isFlashing ? undefined : "3px solid transparent", transition: "border-color 0.2s ease" }}
+                            >
                               <button
                                 type="button"
                                 onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
@@ -994,111 +1064,85 @@ export function AdminPanel() {
                               >
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <div className="flex items-center gap-2 min-w-0">
-                                    <span className="shrink-0 text-xs font-bold w-14" style={{ color: "var(--text-primary)" }}>
+                                    <span
+                                      className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] font-mono"
+                                      style={{ backgroundColor: methodColors.bg, color: methodColors.color, minWidth: "3.5rem", textAlign: "center" }}
+                                    >
                                       {log.method}
                                     </span>
                                     <span
                                       className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
-                                      style={{
-                                        backgroundColor:
-                                          log.status === "error"
-                                            ? "color-mix(in srgb, var(--button-danger-bg) 14%, transparent)"
-                                            : log.status === "pending"
-                                              ? "var(--chip-bg)"
-                                              : "var(--badge-bg)",
-                                        color:
-                                          log.status === "error"
-                                            ? "var(--button-danger-bg)"
-                                            : log.status === "pending"
-                                              ? "var(--chip-text)"
-                                              : "var(--badge-text)",
-                                      }}
+                                      style={getStatusStyle(log.status)}
                                     >
                                       {log.status}
                                     </span>
-                                    <span className="truncate text-xs" style={{ color: "var(--text-secondary)" }}>
+                                    <span className="truncate text-xs font-mono" style={{ color: "var(--text-secondary)" }}>
                                       {log.url.replace(/^https?:\/\/[^/]+/, "")}
                                     </span>
                                   </div>
-                                  <div className="flex shrink-0 items-center gap-3 text-[11px]" style={{ color: "var(--text-muted)" }}>
-                                    <span>{log.statusCode ? `HTTP ${log.statusCode}` : "No status"}</span>
-                                    <span>{typeof log.durationMs === "number" ? `${log.durationMs} ms` : "—"}</span>
-                                    <span>{new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" }).format(new Date(log.startedAt))}</span>
-                                    <span style={{ opacity: 0.4 }}>{isExpanded ? "▲" : "▼"}</span>
+                                  <div className="flex shrink-0 items-center gap-3 text-[11px] font-mono">
+                                    <span style={{ color: statusCodeColor, fontWeight: 600 }}>{log.statusCode || "—"}</span>
+                                    <span style={{ color: durationColor, fontWeight: 600 }}>{typeof log.durationMs === "number" ? `${log.durationMs}ms` : "—"}</span>
+                                    <span style={{ color: "var(--text-muted)" }}>{new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(log.startedAt))}</span>
+                                    <span style={{ color: "var(--text-muted)", opacity: 0.45, fontSize: "9px" }}>{isExpanded ? "▲" : "▼"}</span>
                                   </div>
                                 </div>
                                 {log.errorMessage && !isExpanded ? (
-                                  <p className="mt-1 pl-16 text-xs" style={{ color: "var(--button-danger-bg)" }}>
-                                    {log.errorCode ? `[${log.errorCode}] ` : ""}{log.errorMessage}
+                                  <p className="mt-1.5 pl-[3.75rem] text-xs font-mono" style={{ color: "#ef4444" }}>
+                                    {log.errorCode ? <span className="opacity-60">[{log.errorCode}] </span> : null}{log.errorMessage}
                                   </p>
                                 ) : null}
                               </button>
 
                               {isExpanded ? (
                                 <div
-                                  className="border-t px-4 pb-4 pt-3 space-y-4"
-                                  style={{ borderColor: "var(--surface-border)", backgroundColor: "color-mix(in srgb, var(--surface-strong) 40%, transparent)" }}
+                                  className="lumen-detail-panel border-t px-5 pb-5 pt-4 space-y-4"
+                                  style={{ borderColor: "var(--surface-border)", background: "linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 60%, transparent), color-mix(in srgb, var(--surface-strong) 30%, transparent))" }}
                                 >
-                                  <div className="grid gap-4 md:grid-cols-2">
-                                    <div>
-                                      <p className="text-[10px] uppercase tracking-[0.16em] mb-1" style={{ color: "var(--text-muted)" }}>Full URL</p>
-                                      <p className="break-all text-sm leading-6" style={{ color: "var(--text-secondary)" }}>{log.url}</p>
+                                  <div className="grid gap-3 sm:grid-cols-3">
+                                    <div className="sm:col-span-2">
+                                      <p className="text-[9px] uppercase tracking-[0.18em] mb-1.5 font-semibold" style={{ color: "var(--text-muted)" }}>URL</p>
+                                      <p className="break-all text-xs font-mono leading-5" style={{ color: "var(--text-secondary)" }}>{log.url}</p>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                    <div className="grid grid-cols-2 gap-3">
                                       {[
                                         ["Method", log.method],
-                                        ["Status", log.statusCode ? `HTTP ${log.statusCode}` : "No status"],
-                                        ["Duration", typeof log.durationMs === "number" ? `${log.durationMs} ms` : "—"],
+                                        ["HTTP", log.statusCode ? String(log.statusCode) : "—"],
+                                        ["Duration", typeof log.durationMs === "number" ? `${log.durationMs}ms` : "—"],
                                         ["Source", log.source],
-                                        ["Time", new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" }).format(new Date(log.startedAt))],
-                                        ["ID", log.id],
+                                        ["Time", new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(log.startedAt))],
+                                        ["ID", log.id.slice(-8)],
                                       ].map(([k, v]) => (
                                         <div key={k}>
-                                          <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--text-muted)" }}>{k}</p>
-                                          <p className="mt-0.5 text-xs break-all" style={{ color: "var(--text-primary)" }}>{v}</p>
+                                          <p className="text-[9px] uppercase tracking-[0.16em] font-semibold" style={{ color: "var(--text-muted)" }}>{k}</p>
+                                          <p className="mt-0.5 text-[11px] font-mono break-all" style={{ color: "var(--text-primary)" }}>{v}</p>
                                         </div>
                                       ))}
                                     </div>
                                   </div>
 
-                                  {log.requestBody ? (
-                                    <div>
-                                      <p className="text-[10px] uppercase tracking-[0.16em] mb-1" style={{ color: "var(--text-muted)" }}>Request Body</p>
+                                  {[
+                                    log.requestHeaders && { label: "Request Headers", value: JSON.stringify(log.requestHeaders, null, 2) },
+                                    log.requestBody && { label: "Request Body", value: prettyJson(log.requestBody) },
+                                    log.responseSnippet && { label: "Response Body", value: prettyJson(log.responseSnippet) },
+                                  ].filter(Boolean).map(({ label, value }) => (
+                                    <div key={label}>
+                                      <p className="text-[9px] uppercase tracking-[0.18em] mb-1.5 font-semibold" style={{ color: "var(--text-muted)" }}>{label}</p>
                                       <pre
-                                        className="overflow-auto rounded-[14px] p-3 text-xs leading-5 whitespace-pre-wrap break-all"
-                                        style={{ backgroundColor: "color-mix(in srgb, var(--surface-strong) 70%, transparent)", color: "var(--text-secondary)" }}
+                                        className="overflow-auto rounded-[12px] p-3 text-[11px] leading-5 whitespace-pre-wrap break-all font-mono"
+                                        style={{ background: "color-mix(in srgb, var(--surface-strong) 80%, transparent)", color: "var(--text-secondary)", border: "1px solid var(--surface-border)" }}
                                       >
-                                        {(() => {
-                                          try { return JSON.stringify(JSON.parse(log.requestBody), null, 2); }
-                                          catch { return log.requestBody; }
-                                        })()}
+                                        {value}
                                       </pre>
                                     </div>
-                                  ) : null}
-
-                                  {log.responseSnippet ? (
-                                    <div>
-                                      <p className="text-[10px] uppercase tracking-[0.16em] mb-1" style={{ color: "var(--text-muted)" }}>Response</p>
-                                      <pre
-                                        className="overflow-auto rounded-[14px] p-3 text-xs leading-5 whitespace-pre-wrap break-all"
-                                        style={{ backgroundColor: "color-mix(in srgb, var(--surface-strong) 70%, transparent)", color: "var(--text-secondary)" }}
-                                      >
-                                        {(() => {
-                                          try { return JSON.stringify(JSON.parse(log.responseSnippet), null, 2); }
-                                          catch { return log.responseSnippet; }
-                                        })()}
-                                      </pre>
-                                    </div>
-                                  ) : null}
+                                  ))}
 
                                   {log.errorMessage ? (
-                                    <div>
-                                      <p className="text-[10px] uppercase tracking-[0.16em] mb-1" style={{ color: "var(--button-danger-bg)" }}>
+                                    <div className="rounded-[12px] px-3 py-3" style={{ background: "color-mix(in srgb, #ef4444 10%, transparent)", border: "1px solid color-mix(in srgb, #ef4444 25%, transparent)" }}>
+                                      <p className="text-[9px] uppercase tracking-[0.18em] font-semibold mb-1" style={{ color: "#ef4444" }}>
                                         Error{log.errorCode ? ` · ${log.errorCode}` : ""}
                                       </p>
-                                      <p className="text-sm leading-6" style={{ color: "var(--button-danger-bg)" }}>
-                                        {log.errorMessage}
-                                      </p>
+                                      <p className="text-xs font-mono" style={{ color: "#ef4444" }}>{log.errorMessage}</p>
                                     </div>
                                   ) : null}
                                 </div>
@@ -1108,8 +1152,8 @@ export function AdminPanel() {
                         }) : (
                           <div className="px-4 py-8">
                             <EmptyState
-                              title={monitorSearch || monitorMethodFilter !== "ALL" || monitorStatusFilter !== "ALL" ? "No matching requests" : "No API traffic yet"}
-                              description={monitorSearch || monitorMethodFilter !== "ALL" || monitorStatusFilter !== "ALL" ? "Try adjusting your filters." : "Use the app normally and tracked requests will appear here in real time."}
+                              title={monitorSearch || monitorMethodFilter !== "ALL" || monitorStatusFilter !== "ALL" || monitorSourceFilter !== "ALL" ? "No matching requests" : "No API traffic yet"}
+                              description={monitorSearch || monitorMethodFilter !== "ALL" || monitorStatusFilter !== "ALL" || monitorSourceFilter !== "ALL" ? "Try adjusting your filters." : "Use the app normally and tracked requests will appear here in real time."}
                             />
                           </div>
                         )}
